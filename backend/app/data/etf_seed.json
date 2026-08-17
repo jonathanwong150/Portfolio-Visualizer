@@ -1,0 +1,98 @@
+{
+  "_comment": "Curated seed dataset for the prototype. ETF weights are approximate top-holding snapshots for demonstration and do NOT sum to 1.0 (the remainder is 'other holdings'). Replace with a real ETFHoldingsProvider (e.g. FMP etf-holdings) for production.",
+  "securities": {
+    "NVDA": {"name": "NVIDIA Corp", "type": "stock", "sector": "Technology", "geography": "US", "market_cap": 3.0e12, "beta": 1.75},
+    "AAPL": {"name": "Apple Inc", "type": "stock", "sector": "Technology", "geography": "US", "market_cap": 3.3e12, "beta": 1.25},
+    "MSFT": {"name": "Microsoft Corp", "type": "stock", "sector": "Technology", "geography": "US", "market_cap": 3.1e12, "beta": 0.90},
+    "AMZN": {"name": "Amazon.com Inc", "type": "stock", "sector": "Consumer Discretionary", "geography": "US", "market_cap": 1.9e12, "beta": 1.15},
+    "GOOGL": {"name": "Alphabet Inc Class A", "type": "stock", "sector": "Communication Services", "geography": "US", "market_cap": 2.1e12, "beta": 1.05},
+    "META": {"name": "Meta Platforms Inc", "type": "stock", "sector": "Communication Services", "geography": "US", "market_cap": 1.3e12, "beta": 1.30},
+    "TSLA": {"name": "Tesla Inc", "type": "stock", "sector": "Consumer Discretionary", "geography": "US", "market_cap": 8.0e11, "beta": 2.10},
+    "BRK.B": {"name": "Berkshire Hathaway Class B", "type": "stock", "sector": "Financials", "geography": "US", "market_cap": 9.0e11, "beta": 0.85},
+    "JPM": {"name": "JPMorgan Chase & Co", "type": "stock", "sector": "Financials", "geography": "US", "market_cap": 6.0e11, "beta": 1.10},
+    "AVGO": {"name": "Broadcom Inc", "type": "stock", "sector": "Technology", "geography": "US", "market_cap": 7.5e11, "beta": 1.20},
+    "LLY": {"name": "Eli Lilly & Co", "type": "stock", "sector": "Health Care", "geography": "US", "market_cap": 8.0e11, "beta": 0.55},
+    "UNH": {"name": "UnitedHealth Group", "type": "stock", "sector": "Health Care", "geography": "US", "market_cap": 5.0e11, "beta": 0.65},
+    "XOM": {"name": "Exxon Mobil Corp", "type": "stock", "sector": "Energy", "geography": "US", "market_cap": 5.2e11, "beta": 0.90},
+    "V": {"name": "Visa Inc", "type": "stock", "sector": "Financials", "geography": "US", "market_cap": 5.5e11, "beta": 0.95},
+    "PG": {"name": "Procter & Gamble Co", "type": "stock", "sector": "Consumer Staples", "geography": "US", "market_cap": 3.9e11, "beta": 0.40},
+    "HD": {"name": "Home Depot Inc", "type": "stock", "sector": "Consumer Discretionary", "geography": "US", "market_cap": 3.8e11, "beta": 1.00},
+    "COST": {"name": "Costco Wholesale Corp", "type": "stock", "sector": "Consumer Staples", "geography": "US", "market_cap": 4.0e11, "beta": 0.80},
+    "TSM": {"name": "Taiwan Semiconductor ADR", "type": "stock", "sector": "Technology", "geography": "International", "market_cap": 9.0e11, "beta": 1.20},
+    "NVO": {"name": "Novo Nordisk ADR", "type": "stock", "sector": "Health Care", "geography": "International", "market_cap": 4.5e11, "beta": 0.60},
+    "SCHD_H1": {"name": "placeholder", "type": "stock", "sector": "Financials", "geography": "US", "market_cap": 1.0e11, "beta": 0.90},
+
+    "SPY": {"name": "SPDR S&P 500 ETF", "type": "etf", "beta": 1.00},
+    "VOO": {"name": "Vanguard S&P 500 ETF", "type": "etf", "beta": 1.00},
+    "VTI": {"name": "Vanguard Total Stock Market ETF", "type": "etf", "beta": 1.03},
+    "QQQ": {"name": "Invesco QQQ Trust", "type": "etf", "beta": 1.15},
+    "SCHD": {"name": "Schwab US Dividend Equity ETF", "type": "etf", "beta": 0.85},
+    "VXUS": {"name": "Vanguard Total International Stock ETF", "type": "etf", "beta": 0.95}
+  },
+  "etf_constituents": {
+    "SPY": [
+      {"ticker": "AAPL", "weight": 0.070},
+      {"ticker": "MSFT", "weight": 0.065},
+      {"ticker": "NVDA", "weight": 0.065},
+      {"ticker": "AMZN", "weight": 0.038},
+      {"ticker": "META", "weight": 0.024},
+      {"ticker": "GOOGL", "weight": 0.022},
+      {"ticker": "BRK.B", "weight": 0.017},
+      {"ticker": "AVGO", "weight": 0.016},
+      {"ticker": "TSLA", "weight": 0.015},
+      {"ticker": "LLY", "weight": 0.014},
+      {"ticker": "JPM", "weight": 0.013},
+      {"ticker": "UNH", "weight": 0.011},
+      {"ticker": "XOM", "weight": 0.010},
+      {"ticker": "V", "weight": 0.009}
+    ],
+    "VOO": [
+      {"ticker": "AAPL", "weight": 0.070},
+      {"ticker": "MSFT", "weight": 0.065},
+      {"ticker": "NVDA", "weight": 0.065},
+      {"ticker": "AMZN", "weight": 0.038},
+      {"ticker": "META", "weight": 0.024},
+      {"ticker": "GOOGL", "weight": 0.022},
+      {"ticker": "BRK.B", "weight": 0.017},
+      {"ticker": "AVGO", "weight": 0.016},
+      {"ticker": "TSLA", "weight": 0.015},
+      {"ticker": "LLY", "weight": 0.014}
+    ],
+    "VTI": [
+      {"ticker": "AAPL", "weight": 0.060},
+      {"ticker": "MSFT", "weight": 0.056},
+      {"ticker": "NVDA", "weight": 0.056},
+      {"ticker": "AMZN", "weight": 0.033},
+      {"ticker": "META", "weight": 0.021},
+      {"ticker": "GOOGL", "weight": 0.019},
+      {"ticker": "BRK.B", "weight": 0.015},
+      {"ticker": "AVGO", "weight": 0.014},
+      {"ticker": "TSLA", "weight": 0.013},
+      {"ticker": "LLY", "weight": 0.012}
+    ],
+    "QQQ": [
+      {"ticker": "AAPL", "weight": 0.090},
+      {"ticker": "MSFT", "weight": 0.082},
+      {"ticker": "NVDA", "weight": 0.080},
+      {"ticker": "AMZN", "weight": 0.055},
+      {"ticker": "AVGO", "weight": 0.048},
+      {"ticker": "META", "weight": 0.045},
+      {"ticker": "TSLA", "weight": 0.030},
+      {"ticker": "GOOGL", "weight": 0.025},
+      {"ticker": "COST", "weight": 0.024}
+    ],
+    "SCHD": [
+      {"ticker": "AVGO", "weight": 0.045},
+      {"ticker": "XOM", "weight": 0.043},
+      {"ticker": "PG", "weight": 0.041},
+      {"ticker": "JPM", "weight": 0.040},
+      {"ticker": "HD", "weight": 0.038},
+      {"ticker": "V", "weight": 0.037},
+      {"ticker": "COST", "weight": 0.036}
+    ],
+    "VXUS": [
+      {"ticker": "TSM", "weight": 0.024},
+      {"ticker": "NVO", "weight": 0.014}
+    ]
+  }
+}

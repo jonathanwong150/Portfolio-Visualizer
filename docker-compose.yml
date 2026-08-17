@@ -1,0 +1,29 @@
+services:
+  api:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - CORS_ORIGINS=http://localhost:5173
+    volumes:
+      - ./backend/app:/app/app
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    volumes:
+      - ./frontend/src:/app/src
+
+  # Postgres is scaffolded for Phase 3 (live sync + snapshots).
+  # The prototype runs entirely on seed/mock data and does not require it yet.
+  # db:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_USER: pv
+  #     POSTGRES_PASSWORD: pv
+  #     POSTGRES_DB: portfolio
+  #   ports:
+  #     - "5432:5432"
