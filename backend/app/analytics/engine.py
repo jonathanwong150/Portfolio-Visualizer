@@ -15,9 +15,12 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from app.analytics.factors import FACTOR_AXES, SCORERS
 from app.models import (
     BreakdownSlice,
     CompanyExposure,
+    CorrelationMatrix,
+    FactorTilt,
     Holding,
     PortfolioSummary,
     RiskMetrics,
@@ -219,6 +222,80 @@ class PortfolioAnalytics:
                 row.append(round(shared, 4))
             matrix.append(row)
         return {"etfs": etf_tickers, "matrix": matrix}
+
+    # ---- Factors ---------------------------------------------------------
+
+    def factor_tilts(self) -> list[FactorTilt]:
+        """Value-weighted factor tilts over look-through exposure.
+
+        For each axis, each security contributes its score weighted by its
+        share of the *scored* portfolio (securities lacking the needed
+        fundamentals are excluded from that axis so scores aren't diluted).
+        """
+        exposures = self.company_exposure()
+        tilts: list[FactorTilt] = []
+
+        for key, low_label, high_label in FACTOR_AXES:
+            scorer = SCORERS[key]
+            scored_weight = 0.0
+            weighted_score = 0.0
+            high_w = 0.0
+            low_w = 0.0
+            for exp in exposures:
+                sec = self._security(exp.ticker)
+                if sec is None:
+                    continue
+                score = scorer(sec)
+                if score is None:
+                    continue
+                scored_weight += exp.value
+                weighted_score += score * exp.value
+                if score >= 0:
+                    high_w += exp.value
+                else:
+                    low_w += exp.value
+
+            if scored_weight <= 0:
+                continue
+            tilts.append(
+                FactorTilt(
+                    factor=key,
+                    low_label=low_label,
+                    high_label=high_label,
+                    score=round(weighted_score / scored_weight, 3),
+                    high_weight=round(high_w / scored_weight, 4),
+                    low_weight=round(low_w / scored_weight, 4),
+                )
+            )
+        return tilts
+
+    # ---- Correlation -----------------------------------------------------
+
+    def correlation_matrix(self) -> CorrelationMatrix:
+        """Pearson correlation of daily returns across held positions.
+
+        Uses each position's price history. ETFs and stocks are both included
+        as held (not looked-through) so the matrix reflects what the user
+        actually trades.
+        """
+        import numpy as np
+
+        tickers = sorted({h.ticker for h in self.holdings})
+        series = {t: self.market.get_price_history(t) for t in tickers}
+        min_len = min((len(s) for s in series.values()), default=0)
+        if min_len < 3:
+            return CorrelationMatrix(tickers=tickers, matrix=[])
+
+        returns = []
+        for t in tickers:
+            prices = np.array(series[t][-min_len:], dtype=float)
+            rets = np.diff(prices) / prices[:-1]
+            returns.append(rets)
+        arr = np.vstack(returns)
+        corr = np.corrcoef(arr)
+        corr = np.nan_to_num(corr, nan=0.0)
+        matrix = [[round(float(v), 3) for v in row] for row in corr]
+        return CorrelationMatrix(tickers=tickers, matrix=matrix)
 
     # ---- Risk ------------------------------------------------------------
 

@@ -18,10 +18,11 @@ multiple accounts, it's hard to answer questions like:
 
 ## Features (by phase)
 
-- **Phase 1 (MVP):** Holdings ingest (mock broker) → ETF look-through → true
+- **Phase 1 (MVP) ✅:** Holdings ingest (mock broker) → ETF look-through → true
   company exposure, sector breakdown, portfolio beta. Dashboard + Exposure UI.
-- **Phase 2:** ETF overlap, factor tilts (growth/value/size/momentum/quality),
-  full risk suite (volatility, Sharpe, max drawdown), correlation matrix.
+- **Phase 2 ✅:** ETF overlap heatmap, factor tilts (growth/value/size/momentum/
+  quality), full risk suite (volatility, Sharpe, max drawdown), correlation
+  matrix. Overlap / Factors / Risk screens.
 - **Phase 3:** Live broker sync via Plaid (brokerage/Roth/401k), snapshots.
 - **Phase 4:** Paid data upgrades, historical net-worth tracking, export/share.
 - **Phase 5:** Native mobile app (React Native) reusing the same backend.

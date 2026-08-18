@@ -10,6 +10,8 @@ from app.deps import get_analytics
 from app.models import (
     BreakdownSlice,
     CompanyExposure,
+    CorrelationMatrix,
+    FactorTilt,
     PortfolioSummary,
     RiskMetrics,
 )
@@ -69,6 +71,20 @@ def overlap(
     analytics: PortfolioAnalytics = Depends(get_analytics),
 ) -> dict:
     return analytics.etf_overlap()
+
+
+@app.get("/exposure/factors", response_model=list[FactorTilt])
+def exposure_factors(
+    analytics: PortfolioAnalytics = Depends(get_analytics),
+) -> list[FactorTilt]:
+    return analytics.factor_tilts()
+
+
+@app.get("/risk/correlation", response_model=CorrelationMatrix)
+def risk_correlation(
+    analytics: PortfolioAnalytics = Depends(get_analytics),
+) -> CorrelationMatrix:
+    return analytics.correlation_matrix()
 
 
 @app.get("/risk/metrics", response_model=RiskMetrics)

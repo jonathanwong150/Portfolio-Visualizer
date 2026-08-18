@@ -36,6 +36,10 @@ class SeedMarketDataProvider(MarketDataProvider):
             geography=raw.get("geography"),
             market_cap=raw.get("market_cap"),
             beta=raw.get("beta"),
+            pe=raw.get("pe"),
+            pb=raw.get("pb"),
+            roe=raw.get("roe"),
+            momentum=raw.get("momentum"),
         )
 
     def get_price_history(self, ticker: str, days: int = 252) -> list[float]:

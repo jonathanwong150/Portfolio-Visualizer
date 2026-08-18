@@ -1,12 +1,18 @@
 import { useState } from "react";
 import { Dashboard } from "./screens/Dashboard";
 import { Exposure } from "./screens/Exposure";
+import { Factors } from "./screens/Factors";
+import { Overlap } from "./screens/Overlap";
+import { Risk } from "./screens/Risk";
 
-type Tab = "dashboard" | "exposure";
+type Tab = "dashboard" | "exposure" | "overlap" | "factors" | "risk";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "exposure", label: "Exposure" },
+  { id: "overlap", label: "Overlap" },
+  { id: "factors", label: "Factors" },
+  { id: "risk", label: "Risk" },
 ];
 
 export default function App() {
@@ -37,6 +43,9 @@ export default function App() {
       <main>
         {tab === "dashboard" && <Dashboard />}
         {tab === "exposure" && <Exposure />}
+        {tab === "overlap" && <Overlap />}
+        {tab === "factors" && <Factors />}
+        {tab === "risk" && <Risk />}
       </main>
 
       {/* Mobile bottom nav (app-like) */}

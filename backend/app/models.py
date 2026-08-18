@@ -28,6 +28,11 @@ class Security(BaseModel):
     geography: str | None = None
     market_cap: float | None = None  # USD
     beta: float | None = None
+    # Fundamentals used by the rule-based factor engine.
+    pe: float | None = None          # price / earnings
+    pb: float | None = None          # price / book
+    roe: float | None = None         # return on equity (quality proxy)
+    momentum: float | None = None    # trailing relative return (1.0 = flat)
 
 
 class ETFConstituent(BaseModel):
@@ -84,3 +89,23 @@ class RiskMetrics(BaseModel):
     annualized_volatility: float | None = None
     sharpe_ratio: float | None = None
     max_drawdown: float | None = None
+
+
+class FactorTilt(BaseModel):
+    """A single factor axis expressed as a two-sided tilt.
+
+    ``score`` in [-1, 1]: negative leans to ``low_label``, positive to
+    ``high_label`` (e.g. value <-> growth).
+    """
+
+    factor: str
+    low_label: str
+    high_label: str
+    score: float
+    high_weight: float   # portfolio weight classified toward high_label
+    low_weight: float    # portfolio weight classified toward low_label
+
+
+class CorrelationMatrix(BaseModel):
+    tickers: list[str]
+    matrix: list[list[float]]
