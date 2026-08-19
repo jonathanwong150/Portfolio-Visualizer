@@ -28,7 +28,7 @@ free/mock data and can be upgraded without touching business logic.
 
 | Interface             | Prototype impl        | Upgrade path                      |
 |-----------------------|-----------------------|-----------------------------------|
-| `BrokerAdapter`       | `MockBroker`          | `PlaidBroker` (Investments API)   |
+| `BrokerAdapter`       | `MockBroker`          | `PlaidBroker` / `DbBroker` (Investments API) ✅ |
 | `MarketDataProvider`  | `YFinanceProvider`    | Financial Modeling Prep / EOD     |
 | `ETFHoldingsProvider` | `SeedETFProvider`     | FMP `etf-holdings` / Morningstar  |
 
@@ -53,29 +53,68 @@ Located in `backend/app/analytics/`.
    correlation matrix.
 6. **Summary** — net worth, total invested, allocation by account & asset class.
 
-## Data Model (PostgreSQL)
+## Data Model
+
+Implemented in `backend/app/db/` — SQLAlchemy models (`tables.py`) on an engine
+configured by `DATABASE_URL` (`session.py`). SQLite by default so the prototype
+has no external dependencies; the same models run on Postgres unchanged.
 
 ```
 users
-  └── accounts (type: brokerage | roth | 401k)
-        └── holdings (security_id, shares, cost_basis, snapshot_at)
+  └── accounts (plaid_account_id, name, type: brokerage | roth | 401k, institution)
+        └── holdings (ticker, shares, cost_basis, snapshot_at)
 
-securities (ticker, name, type: stock|etf, sector, geography,
-            market_cap, beta)
-etf_constituents (etf_ticker, holding_ticker, weight)
-price_history (ticker, date, close)
+securities (ticker, name, type: stock|etf)
+plaid_items (access_token, item_id, institution)
 ```
 
-The prototype seeds `securities` + `etf_constituents` and can run entirely from
-the seed dataset + a SQLite/Postgres store; Phase 3 adds live Plaid sync.
+`accounts.type` stores the `AccountType` **value** (`"401k"`, not the Python
+member name `_401k`) and is reconstructed with `AccountType(row.type)`.
+
+`etf_constituents` and `price_history` remain seed-file backed
+(`backend/app/data/etf_seed.json`) until the paid-data upgrade in Phase 4.
+
+### Holdings snapshots
+
+Holdings are **append-only**. Every sync writes a fresh set of rows sharing one
+`snapshot_at`, so history is preserved and "the current portfolio" is simply all
+rows at `max(snapshot_at)`. Accounts, by contrast, are upserted in place on
+`plaid_account_id`.
+
+### Plaid sync data flow
+
+```
+Plaid Link (frontend)
+   │ public_token
+   ▼
+POST /plaid/exchange ──▶ exchange_public_token() ──▶ plaid_items row
+                                                          │
+POST /plaid/sync ──▶ services/sync.sync_holdings() ◀──────┘
+                          │ fetch_investments(access_token)
+                          ▼
+                    accounts (upsert) + holdings (new snapshot) + securities (upsert)
+                          │
+        DbBroker ─────────┘  reads max(snapshot_at) → list[Holding]
+             ▲
+        PlaidBroker  (falls back to MockBroker when unconfigured and unsynced)
+             ▲
+        Analytics Engine (unchanged — still just a BrokerAdapter)
+```
+
+`PlaidBroker` never calls Plaid on the read path, so analytics requests stay
+fast and offline-safe. The `plaid` package is imported lazily inside each helper
+in `providers/plaid_broker.py`, and every entry point guards on
+`settings.plaid_configured` so missing credentials degrade instead of crashing.
 
 ## API Surface
 
 | Method | Path                        | Purpose                              |
 |--------|-----------------------------|--------------------------------------|
 | POST   | `/auth/login`               | JWT auth (single-user prototype)     |
-| POST   | `/plaid/link`               | Create Plaid link token (Phase 3)    |
-| POST   | `/plaid/sync`               | Sync holdings from broker            |
+| POST   | `/plaid/link`               | Create Plaid Link token (`configured:false` when unset) |
+| POST   | `/plaid/exchange`           | Exchange `public_token`, store Plaid Item |
+| POST   | `/plaid/sync`               | Sync holdings from broker (409 if unconfigured) |
+| GET    | `/accounts`                 | Synced accounts, valued at current prices |
 | GET    | `/portfolio/summary`        | Net worth, invested, allocation      |
 | GET    | `/exposure/companies`       | True company exposure (look-through) |
 | GET    | `/exposure/sectors`         | Sector breakdown                     |
@@ -92,14 +131,15 @@ the seed dataset + a SQLite/Postgres store; Phase 3 adds live Plaid sync.
 - **Overlap** — ETF overlap heatmap.
 - **Sectors / Factors** — toggleable bar/pie/treemap; factor tilt bars.
 - **Risk** — beta/vol/Sharpe/drawdown cards + correlation heatmap.
-- **Accounts** — connect via Plaid, list synced accounts.
+- **Accounts** — connect via Plaid Link, sync holdings, list synced accounts with
+  live values; shows a banner and disables the actions when Plaid isn't configured.
 
 ## Roadmap
 
-- **Phase 0** — scaffold: repo structure, Docker Compose, FastAPI + React shells, seed loader.
-- **Phase 1** — MVP: MockBroker → look-through → company exposure + sectors + beta; Dashboard + Exposure UI.
-- **Phase 2** — overlap, factors, full risk suite, correlation, all visualizations.
-- **Phase 3** — live Plaid sync, multi-account aggregation, snapshots.
+- **Phase 0** ✅ — scaffold: repo structure, Docker Compose, FastAPI + React shells, seed loader.
+- **Phase 1** ✅ — MVP: MockBroker → look-through → company exposure + sectors + beta; Dashboard + Exposure UI.
+- **Phase 2** ✅ — overlap, factors, full risk suite, correlation, all visualizations.
+- **Phase 3** ✅ — live Plaid sync, multi-account aggregation, snapshots, SQLite persistence, Accounts screen.
 - **Phase 4** — paid data upgrades, historical net-worth, export/share.
 - **Phase 5** — React Native app reusing the backend.
 

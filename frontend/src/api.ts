@@ -9,6 +9,16 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function post<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
 export interface BreakdownSlice {
   label: string;
   value: number;
@@ -60,6 +70,34 @@ export interface CorrelationMatrix {
   matrix: number[][];
 }
 
+export type AccountType = "brokerage" | "roth" | "401k";
+
+export interface AccountSummary {
+  id: number;
+  name: string;
+  type: AccountType;
+  institution: string | null;
+  value: number;
+  num_holdings: number;
+  last_synced_at: string | null;
+}
+
+export interface AccountsResponse {
+  plaid_configured: boolean;
+  accounts: AccountSummary[];
+}
+
+export interface LinkTokenResponse {
+  configured: boolean;
+  link_token: string | null;
+}
+
+export interface SyncResult {
+  accounts: number;
+  holdings: number;
+  snapshot_at: string;
+}
+
 export const api = {
   summary: () => get<PortfolioSummary>("/portfolio/summary"),
   companies: () => get<CompanyExposure[]>("/exposure/companies"),
@@ -69,4 +107,9 @@ export const api = {
   overlap: () => get<OverlapMatrix>("/overlap"),
   risk: () => get<RiskMetrics>("/risk/metrics"),
   correlation: () => get<CorrelationMatrix>("/risk/correlation"),
+  accounts: () => get<AccountsResponse>("/accounts"),
+  plaidLink: () => post<LinkTokenResponse>("/plaid/link"),
+  plaidExchange: (public_token: string) =>
+    post<{ item_id: string }>("/plaid/exchange", { public_token }),
+  plaidSync: () => post<SyncResult>("/plaid/sync"),
 };

@@ -1,6 +1,7 @@
 """Domain models shared across providers and the analytics engine."""
 from __future__ import annotations
 
+from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -109,3 +110,37 @@ class FactorTilt(BaseModel):
 class CorrelationMatrix(BaseModel):
     tickers: list[str]
     matrix: list[list[float]]
+
+
+# ---- Accounts & Plaid sync (Phase 3) -----------------------------------------
+
+class AccountSummary(BaseModel):
+    """A synced account with its value priced at request time."""
+
+    id: int
+    name: str
+    type: AccountType
+    institution: str | None = None
+    value: float
+    num_holdings: int
+    last_synced_at: datetime | None = None
+
+
+class AccountsResponse(BaseModel):
+    plaid_configured: bool
+    accounts: list[AccountSummary] = Field(default_factory=list)
+
+
+class LinkTokenResponse(BaseModel):
+    configured: bool
+    link_token: str | None = None
+
+
+class ExchangeRequest(BaseModel):
+    public_token: str
+
+
+class SyncResult(BaseModel):
+    accounts: int
+    holdings: int
+    snapshot_at: datetime

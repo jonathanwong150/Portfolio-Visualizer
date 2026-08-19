@@ -15,9 +15,11 @@ def get_broker() -> BrokerAdapter:
     provider = get_settings().broker_provider
     if provider == "mock":
         return MockBroker()
-    # if provider == "plaid":
-    #     from app.providers.plaid_broker import PlaidBroker
-    #     return PlaidBroker()
+    if provider == "plaid":
+        from app.providers.plaid_broker import PlaidBroker
+
+        # Mock data keeps the app usable until the first successful Plaid sync.
+        return PlaidBroker(fallback=MockBroker())
     raise ValueError(f"Unknown broker provider: {provider!r}")
 
 
