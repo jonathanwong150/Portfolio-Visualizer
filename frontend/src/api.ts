@@ -110,6 +110,12 @@ export interface NetWorthHistory {
   prices_synthesized: boolean;
 }
 
+// Downloads go through an anchor href, not fetch, so these are plain URLs.
+export const exportUrls = {
+  holdings: `${BASE}/export/holdings.csv`,
+  exposure: `${BASE}/export/exposure.csv`,
+};
+
 export const api = {
   summary: () => get<PortfolioSummary>("/portfolio/summary"),
   history: () => get<NetWorthHistory>("/portfolio/history"),

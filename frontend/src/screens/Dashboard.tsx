@@ -6,7 +6,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import { api } from "../api";
+import { api, exportUrls } from "../api";
 import { Card, Stat } from "../components/Card";
 import { NetWorthChart } from "../components/NetWorthChart";
 import { CHART_COLORS, pct, usd } from "../format";
@@ -86,7 +86,26 @@ export function Dashboard() {
           </ul>
         </Card>
       </div>
+
+      <Card title="Export">
+        <div className="flex flex-wrap gap-3">
+          <DownloadLink href={exportUrls.holdings} label="Holdings CSV" />
+          <DownloadLink href={exportUrls.exposure} label="Exposure CSV" />
+        </div>
+      </Card>
     </div>
+  );
+}
+
+function DownloadLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      download
+      className="px-4 py-2 rounded-lg bg-accent/10 text-accent text-sm font-medium hover:bg-accent/20 transition"
+    >
+      ↓ {label}
+    </a>
   );
 }
 

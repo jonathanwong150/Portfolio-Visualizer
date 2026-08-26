@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -32,6 +32,7 @@ from app.models import (
 )
 from app.providers.db_broker import snapshot_history
 from app.providers.factory import get_market_data
+from app.services.export import exposure_csv, holdings_csv
 from app.services.sync import PlaidNotConfigured, sync_holdings
 
 settings = get_settings()
@@ -129,6 +130,30 @@ def risk_metrics(
     analytics: PortfolioAnalytics = Depends(get_analytics),
 ) -> RiskMetrics:
     return analytics.risk_metrics()
+
+
+# ---- CSV export (Phase 4) ----------------------------------------------------
+
+def _csv_response(body: str, filename: str) -> Response:
+    return Response(
+        content=body,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/export/holdings.csv")
+def export_holdings(analytics: PortfolioAnalytics = Depends(get_analytics)) -> Response:
+    """Raw positions as CSV."""
+    return _csv_response(
+        holdings_csv(analytics.holdings, analytics.market), "holdings.csv"
+    )
+
+
+@app.get("/export/exposure.csv")
+def export_exposure(analytics: PortfolioAnalytics = Depends(get_analytics)) -> Response:
+    """True per-company exposure, post look-through, as CSV."""
+    return _csv_response(exposure_csv(analytics.company_exposure()), "exposure.csv")
 
 
 # ---- Accounts & Plaid sync (Phase 3) -----------------------------------------
