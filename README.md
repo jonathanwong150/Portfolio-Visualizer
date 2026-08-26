@@ -25,7 +25,8 @@ multiple accounts, it's hard to answer questions like:
   matrix. Overlap / Factors / Risk screens.
 - **Phase 3 ✅:** Live broker sync via Plaid (brokerage/Roth/401k), holdings
   snapshots, SQLite persistence, Accounts screen.
-- **Phase 4:** Paid data upgrades, historical net-worth tracking, export/share.
+- **Phase 4 (in progress):** Historical net-worth chart ✅, holdings + exposure
+  CSV export ✅. Paid data upgrades and share links outstanding.
 - **Phase 5:** Native mobile app (React Native) reusing the same backend.
 
 ## Tech Stack

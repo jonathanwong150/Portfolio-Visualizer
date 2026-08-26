@@ -10,7 +10,10 @@ import type {
 } from "../api";
 import { Dashboard } from "./Dashboard";
 
-vi.mock("../api", () => ({
+// Only `api` is stubbed; the real exportUrls pass through, so the download
+// assertions below verify the actual URLs rather than a copy of them.
+vi.mock("../api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api")>()),
   api: {
     summary: vi.fn(),
     companies: vi.fn(),
@@ -193,6 +196,19 @@ describe("Dashboard", () => {
     expect(await screen.findByText("Failed to load history.")).toBeInTheDocument();
     // The rest of the dashboard must still render.
     expect(screen.getByText("$142,000")).toBeInTheDocument();
+  });
+
+  it("offers both CSV exports as download links", async () => {
+    resolveAll();
+    renderDashboard();
+
+    const holdings = await screen.findByRole("link", { name: /holdings/i });
+    const exposure = screen.getByRole("link", { name: /exposure/i });
+
+    expect(holdings).toHaveAttribute("href", "/api/export/holdings.csv");
+    expect(holdings).toHaveAttribute("download");
+    expect(exposure).toHaveAttribute("href", "/api/export/exposure.csv");
+    expect(exposure).toHaveAttribute("download");
   });
 
   it("renders an empty exposure list without crashing", async () => {

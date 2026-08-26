@@ -127,7 +127,7 @@ in `providers/plaid_broker.py`, and every entry point guards on
 
 ## API Surface
 
-All 14 routes live in `backend/app/main.py`. There is **no authentication** — the
+All 16 routes live in `backend/app/main.py`. There is **no authentication** — the
 app is a single-user local prototype; auth is a Phase 5 concern that arrives with
 the mobile app.
 
@@ -147,6 +147,8 @@ the mobile app.
 | GET    | `/overlap`                  | ETF overlap matrix                   |
 | GET    | `/risk/metrics`             | Beta, volatility, Sharpe, drawdown   |
 | GET    | `/risk/correlation`         | Correlation matrix                   |
+| GET    | `/export/holdings.csv`      | Raw positions as CSV (attachment)    |
+| GET    | `/export/exposure.csv`      | Look-through exposure as CSV (attachment) |
 
 ## Frontend Screens
 
@@ -164,7 +166,8 @@ the mobile app.
 - **Phase 1** ✅ — MVP: MockBroker → look-through → company exposure + sectors + beta; Dashboard + Exposure UI.
 - **Phase 2** ✅ — overlap, factors, full risk suite, correlation, all visualizations.
 - **Phase 3** ✅ — live Plaid sync, multi-account aggregation, snapshots, SQLite persistence, Accounts screen.
-- **Phase 4** — paid data upgrades, historical net-worth, export/share.
+- **Phase 4** *(in progress)* — historical net-worth ✅, CSV export ✅; paid data
+  upgrades and share links outstanding.
 - **Phase 5** — React Native app reusing the backend; authentication arrives with it.
 
 ## Risks
