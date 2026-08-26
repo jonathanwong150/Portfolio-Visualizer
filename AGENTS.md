@@ -58,13 +58,16 @@ cd backend
 
 # Frontend
 cd frontend
+npm test                           # vitest run
+npm run test:watch                 # vitest in watch mode
+npm run lint                       # eslint .
 npm run build                      # tsc -b && vite build — type-check + build
 npm run dev                        # vite dev server
 ```
 
-**There is no `npm test` and no `npm run lint`.** See §6 — this is the repo's real gap, not an oversight to work around. Do not claim frontend tests pass; there is nothing to run.
+**`npm run build` is not a test** — it proves the code compiles, nothing more. `npm test` is the test. Both must pass, plus `npm run lint`.
 
-Test conventions: pytest in `backend/tests/`, one file per module, fixtures in `conftest.py`. When frontend tests land, colocate as `*.test.tsx`.
+Test conventions: pytest in `backend/tests/`, one file per module, fixtures in `conftest.py`. Frontend tests are colocated as `*.test.ts`/`*.test.tsx` next to the code they cover.
 
 ## 5. Conventions & key decisions
 
@@ -76,20 +79,20 @@ Settled. Don't re-litigate without a reason:
 - **Factor scores return `None`, not 0.** Missing data is not a neutral score. `_clamp` bounds real values; absent inputs propagate as `None` so the UI can distinguish "no data" from "average."
 - **Pydantic models are the API contract.** `models.py` and `frontend/src/api.ts` must change together.
 
-## 6. Known gap — frontend has no test or lint infrastructure
-
-Deliberately recorded, not hidden:
+## 6. Test & lint harness
 
 | | Backend | Frontend |
 |---|---|---|
-| Test runner | pytest 8.3.3 | **none** |
-| Test files | 6 files, 47 tests | **0** |
-| Linter | – | **none** |
-| Scripts | – | `dev`, `build`, `preview` only |
+| Test runner | pytest 8.3.3 | Vitest 2.1 + React Testing Library, jsdom |
+| Linter | – | ESLint 9 flat config (`eslint.config.js`), `src/**/*.{ts,tsx}` |
+| Setup | `tests/conftest.py` — in-memory SQLite fixtures | `src/setupTests.ts` — jest-dom matchers, RTL cleanup, `ResizeObserver` stub |
 
-`~/.claude/CLAUDE.md` mandates test-first for input→output contract work, and portfolio math is exactly that shape. The backend honours it. **The frontend cannot**, because there's nothing to run a test with — and this is an app that renders financial analytics and is being wired to live brokerage accounts via Plaid.
+Two things about the frontend harness that will bite otherwise:
 
-Until Vitest + React Testing Library + ESLint are added, frontend changes get the `~/Projects/AGENTS.md` local-testing table (render it, exercise it, check empty/loading/error, verify one chart number by hand) and that is the **only** evidence available. Say so plainly rather than implying test coverage.
+- **`ResizeObserver` is stubbed in `src/setupTests.ts` because jsdom lacks it** and recharts' `ResponsiveContainer` constructs one in a passive effect. Without the stub the throw tears down the React tree, and every assertion after a chart renders fails with a misleading "unable to find element". Don't remove it when touching a chart test.
+- **Test files are type-checked by `npm run build`** — `tsconfig.json` has `include: ["src"]` with `noUnusedLocals`, so a sloppy test breaks the build, not just the suite.
+
+Rendering a component is still not proof a number is right. Charts and analytics get the `~/Projects/AGENTS.md` treatment on top of the unit tests: exercise it in the browser, check empty/loading/error, and verify one number against an independently computed value.
 
 ## 7. Gotchas
 
