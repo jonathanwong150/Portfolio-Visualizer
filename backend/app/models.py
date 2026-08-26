@@ -144,3 +144,20 @@ class SyncResult(BaseModel):
     accounts: int
     holdings: int
     snapshot_at: datetime
+
+
+# ---- Net-worth history (Phase 4) ---------------------------------------------
+
+class NetWorthPoint(BaseModel):
+    """One holdings snapshot, valued at the prices in effect on its own date."""
+
+    snapshot_at: datetime
+    net_worth: float
+    num_holdings: int
+
+
+class NetWorthHistory(BaseModel):
+    points: list[NetWorthPoint] = Field(default_factory=list)
+    # True while the seed provider is in use, so the UI can caption the chart
+    # instead of presenting generated prices as observed history.
+    prices_synthesized: bool

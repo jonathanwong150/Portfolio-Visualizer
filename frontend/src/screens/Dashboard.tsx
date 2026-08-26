@@ -8,12 +8,14 @@ import {
 } from "recharts";
 import { api } from "../api";
 import { Card, Stat } from "../components/Card";
+import { NetWorthChart } from "../components/NetWorthChart";
 import { CHART_COLORS, pct, usd } from "../format";
 
 export function Dashboard() {
   const summary = useQuery({ queryKey: ["summary"], queryFn: api.summary });
   const companies = useQuery({ queryKey: ["companies"], queryFn: api.companies });
   const risk = useQuery({ queryKey: ["risk"], queryFn: api.risk });
+  const history = useQuery({ queryKey: ["history"], queryFn: api.history });
 
   if (summary.isLoading || companies.isLoading) {
     return <div className="text-muted">Loading…</div>;
@@ -49,6 +51,17 @@ export function Dashboard() {
           />
         </Card>
       </div>
+
+      {/* Net worth over time — one point per holdings snapshot */}
+      <Card title="Net Worth Over Time">
+        {history.error ? (
+          <p className="text-danger text-sm">Failed to load history.</p>
+        ) : history.data ? (
+          <NetWorthChart history={history.data} />
+        ) : (
+          <p className="text-muted text-sm">Loading…</p>
+        )}
+      </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* Allocation by account */}

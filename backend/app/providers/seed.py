@@ -24,6 +24,8 @@ def _load() -> dict:
 
 
 class SeedMarketDataProvider(MarketDataProvider):
+    prices_are_synthesized = True
+
     def get_security(self, ticker: str) -> Security | None:
         raw = _load()["securities"].get(ticker)
         if raw is None:

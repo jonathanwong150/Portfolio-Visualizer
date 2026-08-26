@@ -1,8 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CompanyExposure, PortfolioSummary, RiskMetrics } from "../api";
+import type {
+  CompanyExposure,
+  NetWorthHistory,
+  PortfolioSummary,
+  RiskMetrics,
+} from "../api";
 import { Dashboard } from "./Dashboard";
 
 vi.mock("../api", () => ({
@@ -10,11 +15,19 @@ vi.mock("../api", () => ({
     summary: vi.fn(),
     companies: vi.fn(),
     risk: vi.fn(),
+    history: vi.fn(),
   },
 }));
 
 // Imported after the mock so `api` is the mocked object.
 const { api } = await import("../api");
+
+/** A titled Card, scoped so duplicate figures elsewhere don't collide. */
+const card = (title: string) =>
+  within(screen.getByRole("heading", { name: title }).parentElement!);
+
+/** A Stat block, located by its label. */
+const stat = (label: string) => within(screen.getByText(label).parentElement!);
 
 function renderDashboard() {
   // retry: false so the error-state assertion doesn't wait out three retries.
@@ -65,14 +78,26 @@ const RISK: RiskMetrics = {
   max_drawdown: -0.23,
 };
 
+const HISTORY: NetWorthHistory = {
+  points: [
+    { snapshot_at: "2024-01-01T12:00:00", net_worth: 130_000, num_holdings: 11 },
+    { snapshot_at: "2024-02-01T12:00:00", net_worth: 142_000, num_holdings: 12 },
+  ],
+  prices_synthesized: true,
+};
+
 function resolveAll() {
   vi.mocked(api.summary).mockResolvedValue(SUMMARY);
   vi.mocked(api.companies).mockResolvedValue(COMPANIES);
   vi.mocked(api.risk).mockResolvedValue(RISK);
+  vi.mocked(api.history).mockResolvedValue(HISTORY);
 }
 
 beforeEach(() => {
   vi.resetAllMocks();
+  // Benign default so tests focused on other cards don't leave a queryFn
+  // returning undefined, which react-query treats as an error.
+  vi.mocked(api.history).mockResolvedValue({ points: [], prices_synthesized: false });
 });
 
 describe("Dashboard", () => {
@@ -102,8 +127,10 @@ describe("Dashboard", () => {
     resolveAll();
     renderDashboard();
 
-    expect(await screen.findByText("$142,000")).toBeInTheDocument();
-    expect(screen.getByText("$130,000")).toBeInTheDocument();
+    // Scoped to the stat: the net-worth chart headlines the same figure.
+    expect(await screen.findByText("Net Worth")).toBeInTheDocument();
+    expect(stat("Net Worth").getByText("$142,000")).toBeInTheDocument();
+    expect(stat("Total Invested").getByText("$130,000")).toBeInTheDocument();
     // 142,000 - 130,000 = 12,000 gain, rendered with an explicit + sign.
     expect(screen.getByText("+$12,000 unrealized")).toBeInTheDocument();
   });
@@ -142,6 +169,30 @@ describe("Dashboard", () => {
     renderDashboard();
 
     expect(await screen.findByText("—")).toBeInTheDocument();
+  });
+
+  it("renders the net-worth chart from the history query", async () => {
+    resolveAll();
+    renderDashboard();
+
+    expect(await screen.findByText("Net Worth Over Time")).toBeInTheDocument();
+    // 142,000 - 130,000 = +12,000 over the two snapshots. Scoped to the chart
+    // card, since the Total Invested stat also reads "+$12,000 unrealized".
+    expect(card("Net Worth Over Time").getByText(/\+\$12,000 \(9\.2%\)/)).toBeInTheDocument();
+    expect(card("Net Worth Over Time").getByText(/prototype/i)).toBeInTheDocument();
+  });
+
+  it("shows a scoped error when only the history query fails", async () => {
+    vi.mocked(api.summary).mockResolvedValue(SUMMARY);
+    vi.mocked(api.companies).mockResolvedValue(COMPANIES);
+    vi.mocked(api.risk).mockResolvedValue(RISK);
+    vi.mocked(api.history).mockRejectedValue(new Error("/portfolio/history -> 500"));
+
+    renderDashboard();
+
+    expect(await screen.findByText("Failed to load history.")).toBeInTheDocument();
+    // The rest of the dashboard must still render.
+    expect(screen.getByText("$142,000")).toBeInTheDocument();
   });
 
   it("renders an empty exposure list without crashing", async () => {

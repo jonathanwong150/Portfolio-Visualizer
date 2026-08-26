@@ -85,6 +85,21 @@ Holdings are **append-only**. Every sync writes a fresh set of rows sharing one
 rows at `max(snapshot_at)`. Accounts, by contrast, are upserted in place on
 `plaid_account_id`.
 
+### Net-worth history (Phase 4)
+
+`GET /portfolio/history` reads *every* snapshot (`db_broker.snapshot_history`)
+and values each one at the prices in effect **on its own date**, via
+`MarketDataProvider.get_price_on`. Valuing every snapshot at today's prices
+would flatten the market out and turn the series into a contributions chart, so
+the curve moves on both market moves and holdings changes.
+
+The interface default derives `get_price_on` from `get_price_history` by walking
+back calendar days from the newest close, clamped at both ends. The seed series
+is 252 *trading* days treated as consecutive calendar days — a deliberate
+prototype simplification. `MarketDataProvider.prices_are_synthesized` surfaces
+in the response as `prices_synthesized` so the UI captions generated prices
+rather than presenting them as observed history.
+
 ### Plaid sync data flow
 
 ```
@@ -112,7 +127,7 @@ in `providers/plaid_broker.py`, and every entry point guards on
 
 ## API Surface
 
-All 13 routes live in `backend/app/main.py`. There is **no authentication** — the
+All 14 routes live in `backend/app/main.py`. There is **no authentication** — the
 app is a single-user local prototype; auth is a Phase 5 concern that arrives with
 the mobile app.
 
@@ -124,6 +139,7 @@ the mobile app.
 | POST   | `/plaid/sync`               | Sync holdings from broker (409 if unconfigured) |
 | GET    | `/accounts`                 | Synced accounts, valued at current prices |
 | GET    | `/portfolio/summary`        | Net worth, invested, allocation      |
+| GET    | `/portfolio/history`        | Net worth per snapshot, each at its own date's prices |
 | GET    | `/exposure/companies`       | True company exposure (look-through) |
 | GET    | `/exposure/sectors`         | Sector breakdown                     |
 | GET    | `/exposure/factors`         | Factor tilts                         |

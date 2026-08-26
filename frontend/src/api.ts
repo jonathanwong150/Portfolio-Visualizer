@@ -98,8 +98,21 @@ export interface SyncResult {
   snapshot_at: string;
 }
 
+export interface NetWorthPoint {
+  snapshot_at: string;
+  net_worth: number;
+  num_holdings: number;
+}
+
+export interface NetWorthHistory {
+  points: NetWorthPoint[];
+  /** Prices are generated, not observed — caption anything derived from them. */
+  prices_synthesized: boolean;
+}
+
 export const api = {
   summary: () => get<PortfolioSummary>("/portfolio/summary"),
+  history: () => get<NetWorthHistory>("/portfolio/history"),
   companies: () => get<CompanyExposure[]>("/exposure/companies"),
   sectors: () => get<BreakdownSlice[]>("/exposure/sectors"),
   geography: () => get<BreakdownSlice[]>("/exposure/geography"),
