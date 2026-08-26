@@ -23,20 +23,25 @@ multiple accounts, it's hard to answer questions like:
 - **Phase 2 ✅:** ETF overlap heatmap, factor tilts (growth/value/size/momentum/
   quality), full risk suite (volatility, Sharpe, max drawdown), correlation
   matrix. Overlap / Factors / Risk screens.
-- **Phase 3:** Live broker sync via Plaid (brokerage/Roth/401k), snapshots.
+- **Phase 3 ✅:** Live broker sync via Plaid (brokerage/Roth/401k), holdings
+  snapshots, SQLite persistence, Accounts screen.
 - **Phase 4:** Paid data upgrades, historical net-worth tracking, export/share.
 - **Phase 5:** Native mobile app (React Native) reusing the same backend.
 
 ## Tech Stack
 
-| Layer     | Choice                                                        |
-|-----------|--------------------------------------------------------------|
-| Frontend  | React + TypeScript + Vite, Tailwind CSS, Recharts / visx     |
-| Backend   | Python + FastAPI, pandas / numpy                             |
-| Database  | PostgreSQL                                                   |
-| Broker    | Plaid Investments (behind a `BrokerAdapter` interface)       |
-| Market    | yfinance (behind a `MarketDataProvider` interface)          |
-| ETF data  | Curated seed dataset (behind an `ETFHoldingsProvider`)      |
+| Layer     | Today                                                         | Upgrade path                    |
+|-----------|---------------------------------------------------------------|---------------------------------|
+| Frontend  | React + TypeScript + Vite, Tailwind CSS, Recharts             | –                               |
+| Backend   | Python + FastAPI, pandas / numpy                              | –                               |
+| Database  | SQLite (`backend/portfolio.db`)                               | PostgreSQL via `DATABASE_URL`   |
+| Broker    | Plaid Investments, `MockBroker` fallback (`BrokerAdapter`)     | –                               |
+| Market    | Curated seed dataset (`MarketDataProvider`)                    | yfinance / FMP / EOD            |
+| ETF data  | Curated seed dataset (`ETFHoldingsProvider`)                   | FMP `etf-holdings` / Morningstar |
+
+Every external data source sits behind an interface in
+`backend/app/providers/base.py`, so the columns above swap without touching the
+analytics engine.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design.
 

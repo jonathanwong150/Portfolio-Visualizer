@@ -26,11 +26,15 @@ all accounts and funds.
 Every external dependency sits behind an interface so the prototype runs on
 free/mock data and can be upgraded without touching business logic.
 
-| Interface             | Prototype impl        | Upgrade path                      |
-|-----------------------|-----------------------|-----------------------------------|
-| `BrokerAdapter`       | `MockBroker`          | `PlaidBroker` / `DbBroker` (Investments API) ✅ |
-| `MarketDataProvider`  | `YFinanceProvider`    | Financial Modeling Prep / EOD     |
-| `ETFHoldingsProvider` | `SeedETFProvider`     | FMP `etf-holdings` / Morningstar  |
+| Interface             | Prototype impl            | Upgrade path                      |
+|-----------------------|---------------------------|-----------------------------------|
+| `BrokerAdapter`       | `MockBroker`              | `PlaidBroker` / `DbBroker` (Investments API) ✅ |
+| `MarketDataProvider`  | `SeedMarketDataProvider`  | yfinance / Financial Modeling Prep / EOD |
+| `ETFHoldingsProvider` | `SeedETFHoldingsProvider` | FMP `etf-holdings` / Morningstar  |
+
+`SeedMarketDataProvider` synthesizes price history from each security's beta —
+there is no `YFinanceProvider` yet; `factory.py` holds the commented-out wiring
+for it.
 
 ### Why ETF look-through is isolated
 Free APIs don't reliably expose full ETF constituents. The prototype ships a
@@ -108,9 +112,13 @@ in `providers/plaid_broker.py`, and every entry point guards on
 
 ## API Surface
 
+All 13 routes live in `backend/app/main.py`. There is **no authentication** — the
+app is a single-user local prototype; auth is a Phase 5 concern that arrives with
+the mobile app.
+
 | Method | Path                        | Purpose                              |
 |--------|-----------------------------|--------------------------------------|
-| POST   | `/auth/login`               | JWT auth (single-user prototype)     |
+| GET    | `/health`                   | Liveness                             |
 | POST   | `/plaid/link`               | Create Plaid Link token (`configured:false` when unset) |
 | POST   | `/plaid/exchange`           | Exchange `public_token`, store Plaid Item |
 | POST   | `/plaid/sync`               | Sync holdings from broker (409 if unconfigured) |
@@ -141,7 +149,7 @@ in `providers/plaid_broker.py`, and every entry point guards on
 - **Phase 2** ✅ — overlap, factors, full risk suite, correlation, all visualizations.
 - **Phase 3** ✅ — live Plaid sync, multi-account aggregation, snapshots, SQLite persistence, Accounts screen.
 - **Phase 4** — paid data upgrades, historical net-worth, export/share.
-- **Phase 5** — React Native app reusing the backend.
+- **Phase 5** — React Native app reusing the backend; authentication arrives with it.
 
 ## Risks
 
