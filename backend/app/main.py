@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.analytics.engine import PortfolioAnalytics
+from app.analytics.history import net_worth_series
 from app.config import get_settings
 from app.db.session import get_db, init_db
 from app.db.tables import AccountRow, HoldingRow, PlaidItemRow
@@ -24,10 +25,12 @@ from app.models import (
     ExchangeRequest,
     FactorTilt,
     LinkTokenResponse,
+    NetWorthHistory,
     PortfolioSummary,
     RiskMetrics,
     SyncResult,
 )
+from app.providers.db_broker import snapshot_history
 from app.providers.factory import get_market_data
 from app.services.sync import PlaidNotConfigured, sync_holdings
 
@@ -67,6 +70,16 @@ def portfolio_summary(
     analytics: PortfolioAnalytics = Depends(get_analytics),
 ) -> PortfolioSummary:
     return analytics.summary()
+
+
+@app.get("/portfolio/history", response_model=NetWorthHistory)
+def portfolio_history(db: Session = Depends(get_db)) -> NetWorthHistory:
+    """Net worth at every stored snapshot, each valued at its own date's prices."""
+    market = get_market_data()
+    return NetWorthHistory(
+        points=net_worth_series(snapshot_history(db), market),
+        prices_synthesized=market.prices_are_synthesized,
+    )
 
 
 @app.get("/exposure/companies", response_model=list[CompanyExposure])

@@ -16,6 +16,33 @@ def latest_snapshot_at(session: Session) -> datetime | None:
     return session.execute(select(func.max(HoldingRow.snapshot_at))).scalar_one_or_none()
 
 
+def _to_holding(holding: HoldingRow, account: AccountRow) -> Holding:
+    return Holding(
+        ticker=holding.ticker,
+        shares=holding.shares,
+        account_type=AccountType(account.type),
+        cost_basis=holding.cost_basis,
+    )
+
+
+def snapshot_history(session: Session) -> list[tuple[datetime, list[Holding]]]:
+    """Every stored snapshot, oldest first, as ``(snapshot_at, holdings)``.
+
+    Powers the net-worth history; ``DbBroker`` only ever needs the newest.
+    """
+    rows = session.execute(
+        select(HoldingRow, AccountRow)
+        .join(AccountRow, AccountRow.id == HoldingRow.account_id)
+        .order_by(HoldingRow.snapshot_at)
+    ).all()
+
+    grouped: dict[datetime, list[Holding]] = {}
+    for holding, account in rows:
+        grouped.setdefault(holding.snapshot_at, []).append(_to_holding(holding, account))
+    # The query ordered by snapshot_at, so insertion order is already oldest-first.
+    return list(grouped.items())
+
+
 class DbBroker(BrokerAdapter):
     """Serves holdings from the newest snapshot written by the sync service."""
 
@@ -34,12 +61,4 @@ class DbBroker(BrokerAdapter):
             )
             .all()
         )
-        return [
-            Holding(
-                ticker=holding.ticker,
-                shares=holding.shares,
-                account_type=AccountType(account.type),
-                cost_basis=holding.cost_basis,
-            )
-            for holding, account in rows
-        ]
+        return [_to_holding(holding, account) for holding, account in rows]

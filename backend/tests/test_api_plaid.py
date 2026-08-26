@@ -2,27 +2,8 @@
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
 
-from app.config import Settings
-from app.db.session import get_db
-from app.main import app
-
-
-@pytest.fixture
-def client(monkeypatch, session_factory):
-    monkeypatch.setattr(Settings, "plaid_configured", property(lambda self: False))
-
-    def _override_get_db():
-        db = session_factory()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = _override_get_db
-    yield TestClient(app)
-    app.dependency_overrides.clear()
+# The `client` fixture lives in conftest.py — see AGENTS.md §4.
 
 
 def test_link_reports_unconfigured_instead_of_erroring(client):

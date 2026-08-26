@@ -14,12 +14,13 @@ Full design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — read it rather t
 
 | Path | Responsibility |
 |---|---|
-| `backend/app/main.py` | All FastAPI routes. 13 endpoints — health, portfolio, exposure, overlap, factors, risk, plaid, accounts. |
+| `backend/app/main.py` | All FastAPI routes. 14 endpoints — health, portfolio (summary + history), exposure, overlap, factors, risk, plaid, accounts. |
 | `backend/app/models.py` | Pydantic response models. The API contract the frontend types mirror. |
 | `backend/app/config.py` | Settings via pydantic-settings. `database_url` defaults to SQLite here. |
 | `backend/app/deps.py` | FastAPI dependency wiring — how providers get injected into routes. |
 | `backend/app/analytics/engine.py` | `PortfolioAnalytics` — the core. Look-through, exposure, sectors, geography, overlap, correlation, risk metrics. **The heart of the app.** |
 | `backend/app/analytics/factors.py` | Factor scoring: style, size, momentum, quality, beta. Pure functions, all `-> float \| None`. |
+| `backend/app/analytics/history.py` | `net_worth_series` — values each holdings snapshot at its own date's prices. Pure; the DB read lives in `db_broker.snapshot_history`. |
 | `backend/app/providers/` | Pluggable data sources behind interfaces: `base.py` (the protocols), `factory.py` (selection), `mock_broker.py`, `db_broker.py`, `plaid_broker.py`, `seed.py` (curated ETF holdings). |
 | `backend/app/services/sync.py` | Plaid → DB sync orchestration (phase 3). |
 | `backend/app/plaid_mapping.py` | Plaid security payloads → internal `Security` model. The messiest boundary; most Plaid bugs live here. |
