@@ -20,9 +20,15 @@ class Settings(BaseSettings):
     plaid_client_id: str = ""
     plaid_secret: str = ""
     plaid_env: str = "sandbox"
+    plaid_products: str = "investments"
+    plaid_country_codes: str = "US"
+    plaid_redirect_uri: str = ""
 
     # Upgrade-path market data
     fmp_api_key: str = ""
+
+    # Persistence (Phase 3) — SQLite for the prototype, Postgres later
+    database_url: str = "sqlite:///./portfolio.db"
 
     # App
     cors_origins: str = "http://localhost:5173"
@@ -30,6 +36,11 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def plaid_configured(self) -> bool:
+        """True when both Plaid credentials are present."""
+        return bool(self.plaid_client_id and self.plaid_secret)
 
 
 @lru_cache
