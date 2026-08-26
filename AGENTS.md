@@ -86,7 +86,7 @@ Settled. Don't re-litigate without a reason:
 | | Backend | Frontend |
 |---|---|---|
 | Test runner | pytest 8.3.3 | Vitest 2.1 + React Testing Library, jsdom |
-| Linter | – | ESLint 9 flat config (`eslint.config.js`), `src/**/*.{ts,tsx}` |
+| Linter | – | ESLint 9 flat config (`eslint.config.js`) — `src/**/*.{ts,tsx}` plus root `*.js` config files |
 | Setup | `tests/conftest.py` — in-memory SQLite fixtures | `src/setupTests.ts` — jest-dom matchers, RTL cleanup, `ResizeObserver` stub |
 
 Two things about the frontend harness that will bite otherwise:
