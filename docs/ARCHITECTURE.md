@@ -85,6 +85,34 @@ Holdings are **append-only**. Every sync writes a fresh set of rows sharing one
 rows at `max(snapshot_at)`. Accounts, by contrast, are upserted in place on
 `plaid_account_id`.
 
+### CSV import (Phase 5)
+
+```
+Fidelity / Schwab positions  ─┐
+Robinhood transaction history ─┼─▶ services/import_csv.parse_csv()  (pure)
+Canonical template           ─┘        │ ParsedImport (+ skipped, warnings)
+                                       ▼
+                            POST /import/preview  ── review in the UI ──┐
+                                                                        │
+                            POST /import/commit ──▶ services/snapshot.write_snapshot()
+                                                          │
+                                    accounts (upsert) + holdings (new snapshot)
+                                                          │
+                                    SnapshotBroker ───────┘  (MockBroker fallback
+                                                              only while empty)
+```
+
+`write_snapshot` is the single write path, shared with Plaid sync. Columns are
+located by **name**, so a reordered or extra column in a future export can't
+silently shift values. Options, crypto and cash movements are reported in
+`skipped` with reasons rather than dropped.
+
+Imported prices are authoritative: `HoldingRow.price` stores what the broker
+reported, and `SnapshotMarketDataProvider` serves it in preference to anything
+synthesized — each snapshot valued at its own recorded prices. Robinhood
+transaction histories carry no current price, so those positions still fall back
+to the seed until a real market-data provider lands.
+
 ### Net-worth history (Phase 4)
 
 `GET /portfolio/history` reads *every* snapshot (`db_broker.snapshot_history`)
@@ -127,7 +155,7 @@ in `providers/plaid_broker.py`, and every entry point guards on
 
 ## API Surface
 
-All 16 routes live in `backend/app/main.py`. There is **no authentication** — the
+All 19 routes live in `backend/app/main.py`. There is **no authentication** — the
 app is a single-user local prototype; auth is a Phase 5 concern that arrives with
 the mobile app.
 
@@ -147,6 +175,9 @@ the mobile app.
 | GET    | `/overlap`                  | ETF overlap matrix                   |
 | GET    | `/risk/metrics`             | Beta, volatility, Sharpe, drawdown   |
 | GET    | `/risk/correlation`         | Correlation matrix                   |
+| POST   | `/import/preview`           | Parse a brokerage CSV for review (writes nothing) |
+| POST   | `/import/commit`            | Persist a reviewed preview as a snapshot |
+| GET    | `/import/template.csv`      | Canonical import template            |
 | GET    | `/export/holdings.csv`      | Raw positions as CSV (attachment)    |
 | GET    | `/export/exposure.csv`      | Look-through exposure as CSV (attachment) |
 
@@ -168,6 +199,10 @@ the mobile app.
 - **Phase 3** ✅ — live Plaid sync, multi-account aggregation, snapshots, SQLite persistence, Accounts screen.
 - **Phase 4** *(in progress)* — historical net-worth ✅, CSV export ✅; paid data
   upgrades and share links outstanding.
+- **Phase 5** *(in progress)* — usable with real data: CSV import ✅ (Fidelity,
+  Schwab, Robinhood), DB-backed broker by default ✅; live market data via
+  Alpha Vantage outstanding, which is what makes look-through and factor
+  analysis trustworthy.
 - **Phase 5** — React Native app reusing the backend; authentication arrives with it.
 
 ## Risks

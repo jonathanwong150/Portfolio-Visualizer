@@ -1,0 +1,10 @@
+
+Account Number,Account Name,Symbol,Description,Quantity,Last Price,Last Price Change,Current Value,Total Gain/Loss Dollar,Total Gain/Loss Percent,Percent Of Account,Cost Basis Total,Average Cost Basis,Type
+X12345678,Individual,NVDA,NVIDIA CORP,40.000,$182.50,+$1.20,"$7,300.00","+$1,300.00",+21.67%,15.20%,"$6,000.00",$150.00,Cash
+X12345678,Individual,SPY,"SPDR S&P 500 ETF TRUST",30.000,$641.20,-$2.10,"$19,236.00","+$4,236.00",+28.24%,40.05%,"$15,000.00",$500.00,Cash
+Z87654321,ROTH IRA,VTI,VANGUARD TOTAL STOCK MARKET ETF,40.000,$312.75,+$0.90,"$12,510.00","+$3,510.00",+39.00%,26.05%,"$9,000.00",$225.00,Cash
+Z87654321,ROTH IRA,BRK.B,"BERKSHIRE HATHAWAY INC, CLASS B",5.000,$492.10,+$3.40,"$2,460.50",+$460.50,+23.03%,5.12%,"$2,000.00",$400.00,Cash
+X12345678,Individual,SPAXX,FIDELITY GOVERNMENT MONEY MARKET,1502.340,$1.00,$0.00,"$1,502.34",$0.00,0.00%,3.13%,"$1,502.34",$1.00,Cash
+
+"The data and information in this spreadsheet is provided to you solely for your use and is not for distribution."
+"Date downloaded 08/28/2026 4:31 PM ET"

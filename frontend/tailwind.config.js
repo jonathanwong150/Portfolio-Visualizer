@@ -10,6 +10,7 @@ export default {
         accent: "#00d09c",
         accentSoft: "#0a3d33",
         danger: "#f6465d",
+        warning: "#f0a020",
         muted: "#8a94a6",
       },
     },

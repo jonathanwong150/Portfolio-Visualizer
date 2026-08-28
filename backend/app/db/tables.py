@@ -47,6 +47,9 @@ class HoldingRow(Base):
     ticker: Mapped[str] = mapped_column(String, nullable=False)
     shares: Mapped[float] = mapped_column(Float, nullable=False)
     cost_basis: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Per-share price as reported by the source at snapshot time. Authoritative
+    # when present — a brokerage export knows the price better than we do.
+    price: Mapped[float | None] = mapped_column(Float, nullable=True)
     snapshot_at: Mapped[datetime] = mapped_column(DateTime, index=True, nullable=False)
 
     account: Mapped[AccountRow] = relationship(back_populates="holdings")

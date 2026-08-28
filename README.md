@@ -27,6 +27,10 @@ multiple accounts, it's hard to answer questions like:
   snapshots, SQLite persistence, Accounts screen.
 - **Phase 4 (in progress):** Historical net-worth chart ✅, holdings + exposure
   CSV export ✅. Paid data upgrades and share links outstanding.
+- **Phase 5 (in progress):** Import your own holdings from a Fidelity or Schwab
+  positions export, or a Robinhood transaction history ✅. Live market data
+  outstanding — until then, prices come from your upload and any ticker it
+  didn't price is estimated.
 - **Phase 5:** Native mobile app (React Native) reusing the same backend.
 
 ## Tech Stack

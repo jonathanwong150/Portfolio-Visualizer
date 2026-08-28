@@ -146,6 +146,57 @@ class SyncResult(BaseModel):
     snapshot_at: datetime
 
 
+# ---- CSV import (Phase 5) ----------------------------------------------------
+
+class ImportFormat(str, Enum):
+    fidelity = "fidelity"
+    schwab = "schwab"
+    robinhood_activity = "robinhood_activity"
+    canonical = "canonical"
+
+
+class ParsedAccount(BaseModel):
+    name: str
+    account_type: AccountType
+    # True when the type was guessed from the name, so the UI asks to confirm.
+    inferred: bool = True
+
+
+class ParsedHolding(BaseModel):
+    """One position read out of an upload, before anything is persisted."""
+
+    ticker: str
+    name: str | None = None
+    shares: float
+    account_name: str
+    security_type: SecurityType = SecurityType.stock
+    # Present when the export carried them; Robinhood derives cost from trades.
+    price: float | None = None
+    value: float | None = None
+    cost_basis: float | None = None
+
+
+class SkippedRow(BaseModel):
+    line: int
+    raw: str
+    reason: str
+
+
+class ParsedImport(BaseModel):
+    source_format: ImportFormat
+    accounts: list[ParsedAccount] = Field(default_factory=list)
+    holdings: list[ParsedHolding] = Field(default_factory=list)
+    skipped: list[SkippedRow] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ImportCommitRequest(BaseModel):
+    """A reviewed preview, with any account-type corrections applied."""
+
+    holdings: list[ParsedHolding]
+    accounts: list[ParsedAccount]
+
+
 # ---- Net-worth history (Phase 4) ---------------------------------------------
 
 class NetWorthPoint(BaseModel):

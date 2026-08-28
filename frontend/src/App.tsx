@@ -3,10 +3,18 @@ import { Accounts } from "./screens/Accounts";
 import { Dashboard } from "./screens/Dashboard";
 import { Exposure } from "./screens/Exposure";
 import { Factors } from "./screens/Factors";
+import { Import } from "./screens/Import";
 import { Overlap } from "./screens/Overlap";
 import { Risk } from "./screens/Risk";
 
-type Tab = "dashboard" | "exposure" | "overlap" | "factors" | "risk" | "accounts";
+type Tab =
+  | "dashboard"
+  | "exposure"
+  | "overlap"
+  | "factors"
+  | "risk"
+  | "accounts"
+  | "import";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
@@ -15,6 +23,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "factors", label: "Factors" },
   { id: "risk", label: "Risk" },
   { id: "accounts", label: "Accounts" },
+  { id: "import", label: "Import" },
 ];
 
 export default function App() {
@@ -49,6 +58,7 @@ export default function App() {
         {tab === "factors" && <Factors />}
         {tab === "risk" && <Risk />}
         {tab === "accounts" && <Accounts />}
+        {tab === "import" && <Import />}
       </main>
 
       {/* Mobile bottom nav (app-like) */}

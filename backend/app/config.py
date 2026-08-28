@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # Provider selection
-    broker_provider: str = "mock"      # mock | plaid
+    # db serves imported holdings and falls back to mock until you import.
+    broker_provider: str = "db"        # db | mock | plaid
     market_provider: str = "seed"      # seed | yfinance
     etf_provider: str = "seed"         # seed | fmp
 

@@ -1,6 +1,8 @@
 """Tests for the analytics engine — focus on the look-through resolver."""
 from __future__ import annotations
 
+import pytest
+
 from app.analytics.engine import PortfolioAnalytics
 from app.models import AccountType, Holding
 from app.providers.base import BrokerAdapter
@@ -134,3 +136,42 @@ def test_correlation_matrix_shape_and_diagonal():
     for i in range(n):
         for j in range(n):
             assert abs(cm.matrix[i][j] - cm.matrix[j][i]) < 1e-6
+
+
+def test_uncovered_etf_weight_is_redistributed_not_parked_under_the_etf():
+    """Pins the approximation in ``company_exposure``.
+
+    The seed covers only part of each ETF, and the unmapped tail is spread
+    proportionally across the mapped constituents. That scales every
+    single-name exposure by ``1 / covered_weight`` — with SPY at 38.9% seed
+    coverage, a 6.5% NVDA weight presents as ~16.7%. Real constituent data
+    makes this branch a no-op; until then the headline number is inflated, so
+    the behaviour is pinned here rather than left implicit.
+    """
+    eng = _engine([Holding(ticker="SPY", shares=10, account_type=AccountType.brokerage)])
+    constituents = SeedETFHoldingsProvider().get_constituents("SPY")
+    covered = sum(c.weight for c in constituents)
+    nvda_weight = next(c.weight for c in constituents if c.ticker == "NVDA")
+
+    exposure = {e.ticker: e for e in eng.company_exposure()}["NVDA"]
+
+    assert covered < 1.0  # the premise: seed coverage is partial
+    assert exposure.via_etf_value == pytest.approx(
+        eng.total_value * nvda_weight / covered
+    )
+    # The ETF itself must not appear as a residual bucket while anything mapped.
+    assert "SPY" not in {e.ticker for e in eng.company_exposure()}
+
+
+def test_lookthrough_totals_still_reconcile_to_net_worth():
+    """Whatever the approximation does, no value may be created or lost."""
+    eng = _engine(
+        [
+            Holding(ticker="SPY", shares=30, account_type=AccountType.brokerage),
+            Holding(ticker="VTI", shares=40, account_type=AccountType.roth),
+            Holding(ticker="NVDA", shares=40, account_type=AccountType.brokerage),
+        ]
+    )
+    total = sum(e.value for e in eng.company_exposure())
+    assert total == pytest.approx(eng.total_value)
+    assert sum(e.weight for e in eng.company_exposure()) == pytest.approx(1.0)

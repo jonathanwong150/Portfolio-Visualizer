@@ -14,7 +14,7 @@ Full design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — read it rather t
 
 | Path | Responsibility |
 |---|---|
-| `backend/app/main.py` | All FastAPI routes. 16 endpoints — health, portfolio (summary + history), exposure, overlap, factors, risk, export, plaid, accounts. |
+| `backend/app/main.py` | All FastAPI routes. 19 endpoints — health, portfolio (summary + history), exposure, overlap, factors, risk, export, import, plaid, accounts. |
 | `backend/app/models.py` | Pydantic response models. The API contract the frontend types mirror. |
 | `backend/app/config.py` | Settings via pydantic-settings. `database_url` defaults to SQLite here. |
 | `backend/app/deps.py` | FastAPI dependency wiring — how providers get injected into routes. |
@@ -24,12 +24,17 @@ Full design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — read it rather t
 | `backend/app/providers/` | Pluggable data sources behind interfaces: `base.py` (the protocols), `factory.py` (selection), `mock_broker.py`, `db_broker.py`, `plaid_broker.py`, `seed.py` (curated ETF holdings). |
 | `backend/app/services/sync.py` | Plaid → DB sync orchestration (phase 3). |
 | `backend/app/services/export.py` | CSV serialization of holdings and look-through exposure. Pure `-> str`; uses the stdlib `csv` writer so names containing commas are escaped. |
+| `backend/app/services/import_csv.py` | Brokerage CSV → `ParsedImport`. Pure `str -> ParsedImport`. Fidelity/Schwab positions, Robinhood transaction aggregation, canonical template. Columns located by **name**, never index. |
+| `backend/app/services/snapshot.py` | `write_snapshot` — the one write path shared by CSV import and Plaid sync. Accounts upserted on `plaid_account_id` or name; holdings appended. |
+| `backend/app/providers/snapshot_broker.py` | `SnapshotBroker` — latest snapshot, `MockBroker` fallback when nothing is imported. **The default broker.** `PlaidBroker` subclasses it. |
+| `backend/app/providers/snapshot_market.py` | Prices recorded by the import beat anything synthesized; metadata and history delegate to the seed. |
+| `frontend/src/screens/Import.tsx` | Upload → preview → confirm account types → commit. |
 | `backend/app/plaid_mapping.py` | Plaid security payloads → internal `Security` model. The messiest boundary; most Plaid bugs live here. |
 | `backend/app/db/` | `session.py` (engine), `tables.py` (SQLAlchemy schema). |
-| `frontend/src/screens/` | One file per screen: `Dashboard`, `Exposure`, `Overlap`, `Factors`, `Risk`, `Accounts`. |
+| `frontend/src/screens/` | One file per screen: `Dashboard`, `Exposure`, `Overlap`, `Factors`, `Risk`, `Accounts`, `Import`. |
 | `frontend/src/components/` | Shared UI — only `Card.tsx` and `Heatmap.tsx` so far. |
 | `frontend/src/api.ts` | Every backend call. Change this when the API contract changes. |
-| `backend/tests/` | pytest, one file per module, fixtures in `conftest.py`. 47 tests. |
+| `backend/tests/` | pytest, one file per module, fixtures in `conftest.py`, sample broker exports in `tests/fixtures/`. 143 tests. |
 
 **Provider interfaces are the main design decision** — `BrokerAdapter`, `MarketDataProvider`, `ETFHoldingsProvider`. Data sources are swappable so the analytics engine never knows where holdings came from. Don't call Plaid or yfinance from the engine; go through a provider.
 
@@ -104,4 +109,8 @@ Rendering a component is still not proof a number is right. Charts and analytics
 - **Plaid: sandbox credentials only on this machine.** Never put production Plaid keys in `.env` locally. Tokens must never be logged — `plaid_mapping.py` and `services/sync.py` are where an accidental `print` would leak one.
 - **`.env.example` must change in the same commit as a new setting**, or the next clone fails with a confusing pydantic-settings validation error rather than a missing-variable message.
 - **A screen's tests suddenly fail with "unable to find element" after you add an export to `api.ts`** — `vi.mock("../api", () => ({...}))` replaces *every* export, so a newly-used one is `undefined` and the component throws before rendering. Use `vi.mock("../api", async (importOriginal) => ({ ...(await importOriginal<typeof import("../api")>()), api: {...} }))` so only what you stub is stubbed. (2026-08-26)
+- **Look-through overstates single-name exposure whenever constituent data is partial.** `engine.py` redistributes an ETF's uncovered weight across its *mapped* constituents, scaling each by `1 / covered_weight`. The seed covers 38.9% of SPY, so a 6.5% NVDA weight presents as ~16.7%. Totals still reconcile to net worth; the split between names does not. Don't quote a per-company percentage as fact until a provider returns full constituents. (2026-08-28)
+- **Every seed price is ~$100–108 regardless of ticker** — `SeedMarketDataProvider` random-walks from a base of 100, so a $1.00 money-market fund gets valued at $106/share and net worth comes out multiples too high. Imported snapshot prices override this (`snapshot_market.py`); a ticker with no imported price still gets a fabricated one. (2026-08-28)
+- **Tests that hit a DB-backed provider must inject the session.** `get_broker`/`get_market_data` take an optional `session`; without it they open `SessionLocal` and read the developer's real `portfolio.db`, so overriding `get_db` alone does not isolate a test. `deps.get_analytics` threads the request session through — keep it that way. (2026-08-28)
+- **Yahoo Finance returns HTTP 429 from this network** on every endpoint, with or without a browser user-agent. Alpha Vantage and Twelve Data work. Don't conclude "no live market data available" from a Yahoo failure. (2026-08-28)
 - **`backend/portfolio.db` is gitignored and local.** Schema changes have no migration tooling yet — deleting the file and letting it recreate is the current answer, which also destroys local data.

@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -24,8 +24,10 @@ from app.models import (
     CorrelationMatrix,
     ExchangeRequest,
     FactorTilt,
+    ImportCommitRequest,
     LinkTokenResponse,
     NetWorthHistory,
+    ParsedImport,
     PortfolioSummary,
     RiskMetrics,
     SyncResult,
@@ -33,6 +35,8 @@ from app.models import (
 from app.providers.db_broker import snapshot_history
 from app.providers.factory import get_market_data
 from app.services.export import exposure_csv, holdings_csv
+from app.services.import_csv import UnknownFormat, parse_csv
+from app.services.snapshot import SnapshotAccount, SnapshotHolding, write_snapshot
 from app.services.sync import PlaidNotConfigured, sync_holdings
 
 settings = get_settings()
@@ -76,7 +80,7 @@ def portfolio_summary(
 @app.get("/portfolio/history", response_model=NetWorthHistory)
 def portfolio_history(db: Session = Depends(get_db)) -> NetWorthHistory:
     """Net worth at every stored snapshot, each valued at its own date's prices."""
-    market = get_market_data()
+    market = get_market_data(session=db)
     return NetWorthHistory(
         points=net_worth_series(snapshot_history(db), market),
         prices_synthesized=market.prices_are_synthesized,
@@ -130,6 +134,67 @@ def risk_metrics(
     analytics: PortfolioAnalytics = Depends(get_analytics),
 ) -> RiskMetrics:
     return analytics.risk_metrics()
+
+
+# ---- CSV import (Phase 5) ----------------------------------------------------
+
+_TEMPLATE_CSV = (
+    "ticker,shares,account,cost_basis\n"
+    "NVDA,40,Individual,6000\n"
+    "VOO,35,Roth IRA,14000\n"
+    "SCHD,200,My 401k,15000\n"
+)
+
+
+@app.get("/import/template.csv")
+def import_template() -> Response:
+    """A minimal canonical layout, for when a broker export isn't available."""
+    return _csv_response(_TEMPLATE_CSV, "portfolio-template.csv")
+
+
+@app.post("/import/preview", response_model=ParsedImport)
+async def import_preview(file: UploadFile = File(...)) -> ParsedImport:
+    """Parse an upload for review. Writes nothing."""
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="That file isn't UTF-8 text. Export it as CSV rather than XLSX.",
+        ) from exc
+
+    try:
+        return parse_csv(text)
+    except UnknownFormat as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/import/commit", response_model=SyncResult)
+def import_commit(
+    payload: ImportCommitRequest, db: Session = Depends(get_db)
+) -> SyncResult:
+    """Persist a reviewed preview as a new snapshot."""
+    if not payload.holdings:
+        raise HTTPException(status_code=400, detail="Nothing to import.")
+
+    accounts = [
+        SnapshotAccount(name=account.name, account_type=account.account_type)
+        for account in payload.accounts
+    ]
+    holdings = [
+        SnapshotHolding(
+            account_key=holding.account_name,
+            ticker=holding.ticker,
+            shares=holding.shares,
+            cost_basis=holding.cost_basis,
+            name=holding.name,
+            security_type=holding.security_type,
+            price=holding.price,
+        )
+        for holding in payload.holdings
+    ]
+    return write_snapshot(db, accounts, holdings)
 
 
 # ---- CSV export (Phase 4) ----------------------------------------------------
@@ -195,7 +260,7 @@ def plaid_sync(db: Session = Depends(get_db)) -> SyncResult:
 @app.get("/accounts", response_model=AccountsResponse)
 def accounts(db: Session = Depends(get_db)) -> AccountsResponse:
     """Synced accounts with their holdings valued at current prices."""
-    market = get_market_data()
+    market = get_market_data(session=db)
     rows = db.execute(select(AccountRow)).scalars().all()
 
     summaries: list[AccountSummary] = []

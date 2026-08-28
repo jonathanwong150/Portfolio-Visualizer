@@ -12,8 +12,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.db.tables import AccountRow, HoldingRow, PlaidItemRow, SecurityRow
-from app.models import SecurityType, SyncResult
+from app.db.tables import PlaidItemRow
+from app.models import SyncResult
+from app.services.snapshot import SnapshotAccount, SnapshotHolding, write_snapshot
 
 
 class PlaidNotConfigured(Exception):
@@ -36,63 +37,30 @@ def sync_holdings(session: Session) -> SyncResult:
     from app.providers.plaid_broker import fetch_investments
 
     snapshot_at = datetime.utcnow()
-    accounts_synced = 0
-    holdings_synced = 0
+    accounts: list[SnapshotAccount] = []
+    holdings: list[SnapshotHolding] = []
 
     for item in items:
         payload = fetch_investments(item.access_token)
 
-        account_ids: dict[str, int] = {}
-        for account in payload["accounts"]:
-            row = session.execute(
-                select(AccountRow).where(
-                    AccountRow.plaid_account_id == account["plaid_account_id"]
-                )
-            ).scalar_one_or_none()
-            if row is None:
-                row = AccountRow(plaid_account_id=account["plaid_account_id"])
-                session.add(row)
-            row.name = account["name"]
-            row.type = account["type"].value
-            row.institution = account.get("institution") or item.institution
-            session.flush()
-            account_ids[account["plaid_account_id"]] = row.id
-            accounts_synced += 1
-
-        for holding in payload["holdings"]:
-            account_id = account_ids.get(holding["plaid_account_id"])
-            if account_id is None:
-                continue
-            session.add(
-                HoldingRow(
-                    account_id=account_id,
-                    ticker=holding["ticker"],
-                    shares=holding["shares"],
-                    cost_basis=holding.get("cost_basis"),
-                    snapshot_at=snapshot_at,
-                )
+        accounts.extend(
+            SnapshotAccount(
+                name=account["name"],
+                account_type=account["type"],
+                institution=account.get("institution") or item.institution,
+                plaid_account_id=account["plaid_account_id"],
             )
-            _upsert_security(session, holding["ticker"], holding.get("name"))
-            holdings_synced += 1
-
-    session.commit()
-    return SyncResult(
-        accounts=accounts_synced, holdings=holdings_synced, snapshot_at=snapshot_at
-    )
-
-
-def _upsert_security(session: Session, ticker: str, name: str | None) -> None:
-    """Keep the securities table in step with whatever tickers we've seen."""
-    from app.providers.factory import get_etf_holdings
-
-    row = session.get(SecurityRow, ticker)
-    security_type = (
-        SecurityType.etf if get_etf_holdings().is_etf(ticker) else SecurityType.stock
-    )
-    if row is None:
-        session.add(
-            SecurityRow(ticker=ticker, name=name or ticker, type=security_type.value)
+            for account in payload["accounts"]
         )
-        return
-    row.name = name or row.name
-    row.type = security_type.value
+        holdings.extend(
+            SnapshotHolding(
+                account_key=holding["plaid_account_id"],
+                ticker=holding["ticker"],
+                shares=holding["shares"],
+                cost_basis=holding.get("cost_basis"),
+                name=holding.get("name"),
+            )
+            for holding in payload["holdings"]
+        )
+
+    return write_snapshot(session, accounts, holdings, snapshot_at)
