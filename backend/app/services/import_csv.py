@@ -55,7 +55,7 @@ _ALIASES: dict[str, tuple[str, ...]] = {
 _CASH_TICKERS = frozenset(
     {
         "SPAXX", "FDRXX", "FZFXX", "FCASH", "FMPXX",
-        "SWVXX", "SNVXX", "SNSXX", "SCHO",
+        "SWVXX", "SNVXX", "SNSXX",
         "VMFXX", "VMRXX", "VUSXX",
     }
 )
@@ -179,9 +179,13 @@ def _cell(row: list[str], columns: dict[str, int], field: str) -> str | None:
     return row[index].strip()
 
 
-def _security_type(ticker: str) -> SecurityType:
-    # ETF-ness is decided later by the ETFHoldingsProvider, which actually knows.
-    return SecurityType.cash if ticker.upper() in _CASH_TICKERS else SecurityType.stock
+def _security_type(ticker: str) -> SecurityType | None:
+    """Only claim a type we're sure of.
+
+    ``None`` leaves classification to the ETFHoldingsProvider, which actually
+    knows whether a ticker is a fund; guessing "stock" here would overwrite that.
+    """
+    return SecurityType.cash if ticker.upper() in _CASH_TICKERS else None
 
 
 def _collect_accounts(holdings: list[ParsedHolding]) -> list[ParsedAccount]:
@@ -311,7 +315,7 @@ def _parse_robinhood(
             skipped.append(SkippedRow(line=line, raw=raw, reason=f"Not a trade ({code})."))
             continue
 
-        quantity = _num(_cell(row, columns, "quantity")) or _num(_cell(row, columns, "shares"))
+        quantity = _num(_cell(row, columns, "shares"))
         if quantity is None:
             skipped.append(SkippedRow(line=line, raw=raw, reason="Could not read shares for this row."))
             continue

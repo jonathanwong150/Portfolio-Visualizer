@@ -131,6 +131,13 @@ def test_a_money_market_fund_is_classified_as_cash(fidelity):
     assert spaxx.value == 1502.34
 
 
+def test_an_ordinary_ticker_claims_no_type_so_etf_detection_still_runs(fidelity):
+    """Guessing "stock" here would overwrite the ETF provider's answer."""
+    holdings = {h.ticker: h for h in parse_csv(fidelity).holdings}
+    assert holdings["SPY"].security_type is None
+    assert holdings["NVDA"].security_type is None
+
+
 # ---- Schwab -----------------------------------------------------------------
 
 def test_schwab_parses_positions(schwab):

@@ -144,7 +144,7 @@ export interface ParsedHolding {
   name: string | null;
   shares: number;
   account_name: string;
-  security_type: SecurityType;
+  security_type: SecurityType | null;
   price: number | null;
   value: number | null;
   cost_basis: number | null;

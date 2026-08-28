@@ -169,7 +169,8 @@ class ParsedHolding(BaseModel):
     name: str | None = None
     shares: float
     account_name: str
-    security_type: SecurityType = SecurityType.stock
+    # None when the upload didn't say — the ETF provider classifies it instead.
+    security_type: SecurityType | None = None
     # Present when the export carried them; Robinhood derives cost from trades.
     price: float | None = None
     value: float | None = None
