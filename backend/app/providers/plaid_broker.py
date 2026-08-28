@@ -12,10 +12,9 @@ from __future__ import annotations
 import logging
 
 from app.config import get_settings
-from app.models import Holding
 from app.plaid_mapping import map_account_type
 from app.providers.base import BrokerAdapter
-from app.providers.db_broker import DbBroker
+from app.providers.snapshot_broker import SnapshotBroker
 
 logger = logging.getLogger(__name__)
 
@@ -26,34 +25,32 @@ _PLAID_HOSTS = {
 }
 
 
-class PlaidBroker(BrokerAdapter):
-    """Reads the latest synced snapshot, with a mock fallback when unconfigured."""
+class PlaidBroker(SnapshotBroker):
+    """The snapshot broker, with the fallback suppressed once Plaid is configured.
 
-    def __init__(self, session_factory=None, fallback: BrokerAdapter | None = None) -> None:
-        if session_factory is None:
-            from app.db.session import SessionLocal, init_db
+    Configured but never synced means an empty portfolio is the honest answer —
+    showing demo holdings there would look like a failed sync had succeeded.
+    """
 
-            # Idempotent: keeps the adapter usable outside the app lifespan
-            # (scripts, workers) where startup hasn't created the schema.
-            init_db()
-            session_factory = SessionLocal
-        self._session_factory = session_factory
-        self._fallback = fallback
+    def __init__(
+        self,
+        session_factory=None,
+        fallback: BrokerAdapter | None = None,
+        session=None,
+    ) -> None:
+        super().__init__(
+            session_factory=session_factory,
+            fallback=fallback,
+            should_fallback=self._unconfigured,
+            session=session,
+        )
 
-    def get_holdings(self) -> list[Holding]:
-        session = self._session_factory()
-        try:
-            holdings = DbBroker(session).get_holdings()
-        finally:
-            session.close()
-
-        if holdings:
-            return holdings
-        if not get_settings().plaid_configured and self._fallback is not None:
-            logger.warning("Plaid is not configured and no snapshot exists — using fallback broker.")
-            return self._fallback.get_holdings()
-        # Configured but never synced: an empty portfolio is the honest answer.
-        return []
+    @staticmethod
+    def _unconfigured() -> bool:
+        if get_settings().plaid_configured:
+            return False
+        logger.warning("Plaid is not configured and no snapshot exists — using fallback broker.")
+        return True
 
 
 # ---- Plaid API helpers (lazy imports) ----------------------------------------

@@ -97,9 +97,14 @@ class PortfolioAnalytics:
         """Resolve every position down to true per-company exposure.
 
         ETFs are expanded into ``weight * position_value`` per constituent and
-        netted with direct holdings of the same ticker. Any ETF weight not
-        covered by the seed constituents is left as residual ETF exposure under
-        the ETF's own ticker (so totals still reconcile to net worth).
+        netted with direct holdings of the same ticker.
+
+        **Partial constituent data inflates single-name exposure.** Weight the
+        provider doesn't cover is redistributed across the mapped constituents
+        (see below), scaling each by ``1 / covered_weight`` — at the seed's
+        38.9% coverage of SPY, a 6.5% NVDA weight presents as ~16.7%. Totals
+        still reconcile to net worth; the split between names does not. Only a
+        provider returning full constituents makes this exact.
         """
         leaves: dict[str, ExposureLeaf] = {}
 

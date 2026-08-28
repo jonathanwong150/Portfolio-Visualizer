@@ -15,8 +15,28 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+  if (!res.ok) throw new Error(await errorMessage(res, path));
   return res.json() as Promise<T>;
+}
+
+async function postFile<T>(path: string, file: File): Promise<T> {
+  const form = new FormData();
+  form.append("file", file);
+  // No Content-Type header — the browser must set the multipart boundary.
+  const res = await fetch(`${BASE}${path}`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(await errorMessage(res, path));
+  return res.json() as Promise<T>;
+}
+
+/** Surface FastAPI's `detail` so import failures explain themselves. */
+async function errorMessage(res: Response, path: string): Promise<string> {
+  try {
+    const body = await res.json();
+    if (typeof body?.detail === "string") return body.detail;
+  } catch {
+    // Fall through to the status-code message.
+  }
+  return `${path} -> ${res.status}`;
 }
 
 export interface BreakdownSlice {
@@ -110,10 +130,45 @@ export interface NetWorthHistory {
   prices_synthesized: boolean;
 }
 
+export type SecurityType = "stock" | "etf" | "cash";
+
+export interface ParsedAccount {
+  name: string;
+  account_type: AccountType;
+  /** The type was guessed from the account name — confirm before committing. */
+  inferred: boolean;
+}
+
+export interface ParsedHolding {
+  ticker: string;
+  name: string | null;
+  shares: number;
+  account_name: string;
+  security_type: SecurityType | null;
+  price: number | null;
+  value: number | null;
+  cost_basis: number | null;
+}
+
+export interface SkippedRow {
+  line: number;
+  raw: string;
+  reason: string;
+}
+
+export interface ParsedImport {
+  source_format: string;
+  accounts: ParsedAccount[];
+  holdings: ParsedHolding[];
+  skipped: SkippedRow[];
+  warnings: string[];
+}
+
 // Downloads go through an anchor href, not fetch, so these are plain URLs.
 export const exportUrls = {
   holdings: `${BASE}/export/holdings.csv`,
   exposure: `${BASE}/export/exposure.csv`,
+  template: `${BASE}/import/template.csv`,
 };
 
 export const api = {
@@ -131,4 +186,7 @@ export const api = {
   plaidExchange: (public_token: string) =>
     post<{ item_id: string }>("/plaid/exchange", { public_token }),
   plaidSync: () => post<SyncResult>("/plaid/sync"),
+  importPreview: (file: File) => postFile<ParsedImport>("/import/preview", file),
+  importCommit: (payload: { holdings: ParsedHolding[]; accounts: ParsedAccount[] }) =>
+    post<SyncResult>("/import/commit", payload),
 };
