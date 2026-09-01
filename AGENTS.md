@@ -6,7 +6,7 @@ A web app that aggregates investment holdings across accounts (brokerage / Roth 
 
 The point of the app is the look-through: "how much of my portfolio is *actually* NVIDIA, counting every ETF that holds it plus direct shares." Everything else is built on that number.
 
-Full design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — read it rather than re-deriving the design from code. Phases 1–3 are complete (phase 3 = live Plaid sync); **phase 4 (paid data, historical net worth, export) is in progress**.
+Full design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — read it rather than re-deriving the design from code. Phases 1–4 are complete; **phase 5 (real data: CSV import + Alpha Vantage) is in progress**.
 
 > **Not financial advice.** The app is for visualization only. Never present output as a recommendation, and don't add features that read as advice — the README disclaims this and it's a product constraint, not boilerplate.
 
@@ -14,7 +14,7 @@ Full design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — read it rather t
 
 | Path | Responsibility |
 |---|---|
-| `backend/app/main.py` | All FastAPI routes. 19 endpoints — health, portfolio (summary + history), exposure, overlap, factors, risk, export, import, plaid, accounts. |
+| `backend/app/main.py` | All FastAPI routes. 21 endpoints — health, portfolio (summary + history), exposure, overlap, factors, risk, export, import, market-data, plaid, accounts. |
 | `backend/app/models.py` | Pydantic response models. The API contract the frontend types mirror. |
 | `backend/app/config.py` | Settings via pydantic-settings. `database_url` defaults to SQLite here. |
 | `backend/app/deps.py` | FastAPI dependency wiring — how providers get injected into routes. |
@@ -28,13 +28,17 @@ Full design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — read it rather t
 | `backend/app/services/snapshot.py` | `write_snapshot` — the one write path shared by CSV import and Plaid sync. Accounts upserted on `plaid_account_id` or name; holdings appended. |
 | `backend/app/providers/snapshot_broker.py` | `SnapshotBroker` — latest snapshot, `MockBroker` fallback when nothing is imported. **The default broker.** `PlaidBroker` subclasses it. |
 | `backend/app/providers/snapshot_market.py` | Prices recorded by the import beat anything synthesized; metadata and history delegate to the seed. |
+| `backend/app/providers/alphavantage.py` | AV client. Pure `map_*` functions carry the logic; `fetch_*` is HTTP only. |
+| `backend/app/providers/cached_market.py` | `CachedMarketDataProvider` / `CachedETFHoldingsProvider` — read the cache, fall back to seed, **never HTTP**. |
+| `backend/app/services/market_cache.py` | The three cache tables + staleness policy. Raw `OVERVIEW` stored verbatim so a mapping change is a re-map, not a re-fetch. |
+| `backend/app/services/market_refresh.py` | The only thing that fetches. Prioritises prices → constituents → metadata, paces 1.5s, stops at a call budget. |
 | `frontend/src/screens/Import.tsx` | Upload → preview → confirm account types → commit. |
 | `backend/app/plaid_mapping.py` | Plaid security payloads → internal `Security` model. The messiest boundary; most Plaid bugs live here. |
 | `backend/app/db/` | `session.py` (engine), `tables.py` (SQLAlchemy schema). |
 | `frontend/src/screens/` | One file per screen: `Dashboard`, `Exposure`, `Overlap`, `Factors`, `Risk`, `Accounts`, `Import`. |
 | `frontend/src/components/` | Shared UI — only `Card.tsx` and `Heatmap.tsx` so far. |
 | `frontend/src/api.ts` | Every backend call. Change this when the API contract changes. |
-| `backend/tests/` | pytest, one file per module, fixtures in `conftest.py`, sample broker exports in `tests/fixtures/`. 143 tests. |
+| `backend/tests/` | pytest, one file per module, fixtures in `conftest.py`, sample broker exports and real Alpha Vantage payloads in `tests/fixtures/`. 210 tests. |
 
 **Provider interfaces are the main design decision** — `BrokerAdapter`, `MarketDataProvider`, `ETFHoldingsProvider`. Data sources are swappable so the analytics engine never knows where holdings came from. Don't call Plaid or yfinance from the engine; go through a provider.
 
@@ -59,7 +63,7 @@ docker-compose up --build          # api :8000, frontend :5173
 
 # Backend
 cd backend
-./.venv/bin/pytest                 # 47 tests, ~4s
+./.venv/bin/pytest                 # 210 tests, ~1s
 ./.venv/bin/pytest tests/test_engine.py -k lookthrough   # single test
 ./.venv/bin/uvicorn app.main:app --reload
 
@@ -80,7 +84,7 @@ Test conventions: pytest in `backend/tests/`, one file per module, fixtures in `
 
 Settled. Don't re-litigate without a reason:
 
-- **Providers behind interfaces.** Every external data source (broker, market data, ETF holdings) sits behind a protocol in `providers/base.py`. This is what makes the app testable without network access — `mock_broker.py` and `seed.py` are why 47 tests run in 4 seconds.
+- **Providers behind interfaces.** Every external data source (broker, market data, ETF holdings) sits behind a protocol in `providers/base.py`. This is what makes the app testable without network access — `mock_broker.py` and `seed.py` are why the suite runs offline in about a second.
 - **SQLite now, Postgres later.** `config.py` defaults to `sqlite:///./portfolio.db`; `session.py` is written so `DATABASE_URL` can point at Postgres without touching call sites. The `db:` service in `docker-compose.yml` is **commented out** and intended for phase 3+.
 - **Analytics are pure.** `engine.py` and `factors.py` take data and return numbers — no I/O, no DB, no HTTP. Keep it that way; it's why they're unit-testable.
 - **Factor scores return `None`, not 0.** Missing data is not a neutral score. `_clamp` bounds real values; absent inputs propagate as `None` so the UI can distinguish "no data" from "average."
@@ -110,6 +114,9 @@ Rendering a component is still not proof a number is right. Charts and analytics
 - **`.env.example` must change in the same commit as a new setting**, or the next clone fails with a confusing pydantic-settings validation error rather than a missing-variable message.
 - **A screen's tests suddenly fail with "unable to find element" after you add an export to `api.ts`** — `vi.mock("../api", () => ({...}))` replaces *every* export, so a newly-used one is `undefined` and the component throws before rendering. Use `vi.mock("../api", async (importOriginal) => ({ ...(await importOriginal<typeof import("../api")>()), api: {...} }))` so only what you stub is stubbed. (2026-08-26)
 - **Look-through overstates single-name exposure whenever constituent data is partial.** `engine.py` redistributes an ETF's uncovered weight across its *mapped* constituents, scaling each by `1 / covered_weight`. The seed covers 38.9% of SPY, so a 6.5% NVDA weight presents as ~16.7%. Totals still reconcile to net worth; the split between names does not. Don't quote a per-company percentage as fact until a provider returns full constituents. (2026-08-28)
+- **Alpha Vantage's free tier is 25 requests/day, and a ~20-ticker portfolio wants ~40.** Confirmed from its own response body, not the docs. `market_refresh` therefore orders work prices → ETF constituents → metadata, so a truncated run still leaves the most useful partial state. Expect two days to warm up from cold. (2026-09-01)
+- **Alpha Vantage signals three different things through HTTP 200, and conflating any two breaks a refresh.** `Note`/`Information` = rate limited (stop the run). `Error Message` = invalid symbol (skip that ticker). `{}` = no overview for a symbol it still *quotes* fine — true of many commodity/crypto trusts like GLD and IBIT, so never let an empty overview suppress the price fetch. (2026-09-01)
+- **Alpha Vantage's sector vocabulary differs from the seed's**, not just in case: `CONSUMER CYCLICAL` vs `Consumer Discretionary`, `FINANCIAL SERVICES` vs `Financials`, `HEALTHCARE` vs `Health Care`. Unmapped, one sector shows as two rows in the same breakdown. `_SECTOR_ALIASES` in `alphavantage.py` is the fix; extend it when a new sector appears. (2026-09-01)
 - **Every seed price is ~$100–108 regardless of ticker** — `SeedMarketDataProvider` random-walks from a base of 100, so a $1.00 money-market fund gets valued at $106/share and net worth comes out multiples too high. Imported snapshot prices override this (`snapshot_market.py`); a ticker with no imported price still gets a fabricated one. (2026-08-28)
 - **Tests that hit a DB-backed provider must inject the session.** `get_broker`/`get_market_data` take an optional `session`; without it they open `SessionLocal` and read the developer's real `portfolio.db`, so overriding `get_db` alone does not isolate a test. `deps.get_analytics` threads the request session through — keep it that way. (2026-08-28)
 - **Yahoo Finance returns HTTP 429 from this network** on every endpoint, with or without a browser user-agent. Alpha Vantage and Twelve Data work. Don't conclude "no live market data available" from a Yahoo failure. (2026-08-28)

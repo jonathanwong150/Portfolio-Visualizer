@@ -35,7 +35,9 @@ from app.models import (
 from app.providers.db_broker import snapshot_history
 from app.providers.factory import get_market_data
 from app.services.export import exposure_csv, holdings_csv
+from app.services import market_refresh
 from app.services.import_csv import UnknownFormat, parse_csv
+from app.services.market_refresh import Coverage, RefreshResult
 from app.services.snapshot import SnapshotAccount, SnapshotHolding, write_snapshot
 from app.services.sync import PlaidNotConfigured, sync_holdings
 
@@ -134,6 +136,27 @@ def risk_metrics(
     analytics: PortfolioAnalytics = Depends(get_analytics),
 ) -> RiskMetrics:
     return analytics.risk_metrics()
+
+
+# ---- Market data (Phase 5) ---------------------------------------------------
+
+@app.post("/market-data/refresh", response_model=RefreshResult)
+def market_data_refresh(db: Session = Depends(get_db)) -> RefreshResult:
+    """Fetch real prices, fundamentals and ETF constituents for held tickers.
+
+    Paced for Alpha Vantage's free tier, so this takes a few seconds per ticker
+    and may need running more than once for a large portfolio.
+    """
+    try:
+        return market_refresh.refresh(db)
+    except market_refresh.NotConfigured as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/market-data/coverage", response_model=Coverage)
+def market_data_coverage(db: Session = Depends(get_db)) -> Coverage:
+    """How much of the portfolio has real data behind it."""
+    return market_refresh.coverage(db)
 
 
 # ---- CSV import (Phase 5) ----------------------------------------------------

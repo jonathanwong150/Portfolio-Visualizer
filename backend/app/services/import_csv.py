@@ -106,7 +106,12 @@ def _num(raw: str | None) -> float | None:
 
 
 def _normalize(cell: str) -> str:
-    return cell.strip().strip('"').strip().lower()
+    """Header text reduced to a comparable form.
+
+    Underscores become spaces so ``cost_basis`` and ``Cost Basis`` are the same
+    column — our own template uses the snake_case spelling.
+    """
+    return cell.strip().strip('"').strip().lower().replace("_", " ")
 
 
 def _map_columns(header: list[str]) -> dict[str, int]:

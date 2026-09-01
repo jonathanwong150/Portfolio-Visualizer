@@ -28,9 +28,10 @@ multiple accounts, it's hard to answer questions like:
 - **Phase 4 (in progress):** Historical net-worth chart ✅, holdings + exposure
   CSV export ✅. Paid data upgrades and share links outstanding.
 - **Phase 5 (in progress):** Import your own holdings from a Fidelity or Schwab
-  positions export, or a Robinhood transaction history ✅. Live market data
-  outstanding — until then, prices come from your upload and any ticker it
-  didn't price is estimated.
+  positions export, or a Robinhood transaction history ✅. Live prices,
+  fundamentals and ETF constituents from Alpha Vantage ✅, cached locally.
+  Needs a free API key; the free tier's 25 requests/day means a portfolio of
+  ~20 tickers takes a couple of refreshes to warm up.
 - **Phase 5:** Native mobile app (React Native) reusing the same backend.
 
 ## Tech Stack
@@ -41,8 +42,8 @@ multiple accounts, it's hard to answer questions like:
 | Backend   | Python + FastAPI, pandas / numpy                              | –                               |
 | Database  | SQLite (`backend/portfolio.db`)                               | PostgreSQL via `DATABASE_URL`   |
 | Broker    | Plaid Investments, `MockBroker` fallback (`BrokerAdapter`)     | –                               |
-| Market    | Curated seed dataset (`MarketDataProvider`)                    | yfinance / FMP / EOD            |
-| ETF data  | Curated seed dataset (`ETFHoldingsProvider`)                   | FMP `etf-holdings` / Morningstar |
+| Market    | Alpha Vantage, seed fallback (`MarketDataProvider`)            | paid tier for higher limits     |
+| ETF data  | Alpha Vantage `ETF_PROFILE`, seed fallback                     | Morningstar for full constituents |
 
 Every external data source sits behind an interface in
 `backend/app/providers/base.py`, so the columns above swap without touching the

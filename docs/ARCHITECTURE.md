@@ -29,12 +29,12 @@ free/mock data and can be upgraded without touching business logic.
 | Interface             | Prototype impl            | Upgrade path                      |
 |-----------------------|---------------------------|-----------------------------------|
 | `BrokerAdapter`       | `MockBroker`              | `PlaidBroker` / `DbBroker` (Investments API) ✅ |
-| `MarketDataProvider`  | `SeedMarketDataProvider`  | yfinance / Financial Modeling Prep / EOD |
-| `ETFHoldingsProvider` | `SeedETFHoldingsProvider` | FMP `etf-holdings` / Morningstar  |
+| `MarketDataProvider`  | Alpha Vantage → import price → seed ✅ | paid tier for higher request limits |
+| `ETFHoldingsProvider` | Alpha Vantage `ETF_PROFILE` → seed ✅ | Morningstar for full constituents |
 
-`SeedMarketDataProvider` synthesizes price history from each security's beta —
-there is no `YFinanceProvider` yet; `factory.py` holds the commented-out wiring
-for it.
+`SeedMarketDataProvider` synthesizes price history from each security's beta and
+is now only the last fallback. Yahoo Finance is unusable here — it returns HTTP
+429 from this network — which is why Alpha Vantage is the provider.
 
 ### Why ETF look-through is isolated
 Free APIs don't reliably expose full ETF constituents. The prototype ships a
@@ -66,7 +66,7 @@ has no external dependencies; the same models run on Postgres unchanged.
 ```
 users
   └── accounts (plaid_account_id, name, type: brokerage | roth | 401k, institution)
-        └── holdings (ticker, shares, cost_basis, snapshot_at)
+        └── holdings (ticker, shares, cost_basis, price, snapshot_at)
 
 securities (ticker, name, type: stock|etf)
 plaid_items (access_token, item_id, institution)
@@ -75,8 +75,8 @@ plaid_items (access_token, item_id, institution)
 `accounts.type` stores the `AccountType` **value** (`"401k"`, not the Python
 member name `_401k`) and is reconstructed with `AccountType(row.type)`.
 
-`etf_constituents` and `price_history` remain seed-file backed
-(`backend/app/data/etf_seed.json`) until the paid-data upgrade in Phase 4.
+`etf_constituents`, `price_history` and `security_metadata` are real tables now,
+populated from Alpha Vantage; `etf_seed.json` is the offline fallback.
 
 ### Holdings snapshots
 
@@ -112,6 +112,34 @@ reported, and `SnapshotMarketDataProvider` serves it in preference to anything
 synthesized — each snapshot valued at its own recorded prices. Robinhood
 transaction histories carry no current price, so those positions still fall back
 to the seed until a real market-data provider lands.
+
+### Market data (Phase 5)
+
+```
+POST /market-data/refresh ──▶ services/market_refresh   (the ONLY fetcher)
+                                    │ prices → constituents → metadata
+                                    ▼
+                        providers/alphavantage  fetch_* / map_*
+                                    │
+                    security_metadata · etf_constituents · price_history
+                                    │
+   CachedMarketDataProvider ────────┘   SnapshotMarketDataProvider ──▶ Seed
+        (fetched closes)                  (broker export price)     (synthesized)
+```
+
+Price precedence, best first: **fetched daily closes → the price the broker
+export carried → the seed's synthesized series.** The import price is what covers
+instruments Alpha Vantage can't quote, such as a 401(k) collective trust with no
+ticker.
+
+Reads never make a network call, mirroring the Plaid decision above. The free
+tier allows **25 requests/day** against a ~20-ticker portfolio wanting ~40, so
+`_plan` groups work by type — prices first, then ETF constituents, then
+fundamentals — and a truncated run leaves the most useful partial state.
+
+`GET /market-data/coverage` reports how much of the portfolio has real data, and
+per-ETF constituent depth: a look-through percentage is only as trustworthy as
+the fraction of the fund its constituent list covers.
 
 ### Net-worth history (Phase 4)
 
@@ -155,7 +183,7 @@ in `providers/plaid_broker.py`, and every entry point guards on
 
 ## API Surface
 
-All 19 routes live in `backend/app/main.py`. There is **no authentication** — the
+All 21 routes live in `backend/app/main.py`. There is **no authentication** — the
 app is a single-user local prototype; auth is a Phase 5 concern that arrives with
 the mobile app.
 
@@ -175,6 +203,8 @@ the mobile app.
 | GET    | `/overlap`                  | ETF overlap matrix                   |
 | GET    | `/risk/metrics`             | Beta, volatility, Sharpe, drawdown   |
 | GET    | `/risk/correlation`         | Correlation matrix                   |
+| POST   | `/market-data/refresh`      | Fetch real prices/fundamentals/constituents |
+| GET    | `/market-data/coverage`     | How much of the portfolio has real data |
 | POST   | `/import/preview`           | Parse a brokerage CSV for review (writes nothing) |
 | POST   | `/import/commit`            | Persist a reviewed preview as a snapshot |
 | GET    | `/import/template.csv`      | Canonical import template            |
@@ -201,8 +231,7 @@ the mobile app.
   upgrades and share links outstanding.
 - **Phase 5** *(in progress)* — usable with real data: CSV import ✅ (Fidelity,
   Schwab, Robinhood), DB-backed broker by default ✅; live market data via
-  Alpha Vantage outstanding, which is what makes look-through and factor
-  analysis trustworthy.
+  Alpha Vantage ✅ (prices, fundamentals, ETF constituents, cached in SQLite).
 - **Phase 5** — React Native app reusing the backend; authentication arrives with it.
 
 ## Risks

@@ -19,5 +19,5 @@ def get_analytics(db: Session = Depends(get_db)) -> PortfolioAnalytics:
     return PortfolioAnalytics(
         broker=get_broker(session=db),
         market=get_market_data(session=db),
-        etf=get_etf_holdings(),
+        etf=get_etf_holdings(session=db),
     )

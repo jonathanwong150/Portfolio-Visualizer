@@ -41,21 +41,37 @@ def get_market_data(session: Session | None = None) -> MarketDataProvider:
         seed = SeedMarketDataProvider()
         if settings.broker_provider == "mock":
             return seed
-        # Imported snapshots carry the broker's own prices; prefer them over
-        # anything we'd synthesize, and fall back to the seed for the rest.
+
+        # Precedence, best first: fetched daily closes, then whatever price the
+        # broker export carried, then the seed's synthesized series. Fetched
+        # data wins because it's refreshed daily and covers every ticker
+        # uniformly; the import price is the fallback for things Alpha Vantage
+        # can't quote, like a 401(k) collective trust with no ticker.
         from app.providers.snapshot_market import SnapshotMarketDataProvider
 
-        return SnapshotMarketDataProvider(seed, session=session)
+        chain: MarketDataProvider = SnapshotMarketDataProvider(seed, session=session)
+        if session is not None:
+            from app.providers.cached_market import CachedMarketDataProvider
+
+            chain = CachedMarketDataProvider(chain, session=session)
+        return chain
     # if provider == "yfinance":
     #     from app.providers.yfinance_provider import YFinanceProvider
     #     return YFinanceProvider()
     raise ValueError(f"Unknown market provider: {provider!r}")
 
 
-def get_etf_holdings() -> ETFHoldingsProvider:
+def get_etf_holdings(session: Session | None = None) -> ETFHoldingsProvider:
     provider = get_settings().etf_provider
     if provider == "seed":
-        return SeedETFHoldingsProvider()
+        seed = SeedETFHoldingsProvider()
+        if session is None:
+            return seed
+        # Fetched constituents beat the seed's short curated lists; the seed
+        # still covers its six ETFs when nothing has been fetched yet.
+        from app.providers.cached_market import CachedETFHoldingsProvider
+
+        return CachedETFHoldingsProvider(seed, session=session)
     # if provider == "fmp":
     #     from app.providers.fmp_provider import FMPETFHoldingsProvider
     #     return FMPETFHoldingsProvider()

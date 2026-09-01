@@ -52,7 +52,12 @@ class SeedMarketDataProvider(MarketDataProvider):
         prototype stand-in for real historical prices.
         """
         sec = self.get_security(ticker)
-        beta = (sec.beta if sec and sec.beta else 1.0)
+        if sec is None:
+            # No series for a ticker the seed has never heard of. Returning one
+            # anyway (beta defaulting to 1.0) fabricated a plausible ~$107 for
+            # every unknown symbol, which is worse than an honest zero.
+            return []
+        beta = sec.beta or 1.0
         seed = sum(ord(c) for c in ticker)
         price = 100.0
         series: list[float] = [price]

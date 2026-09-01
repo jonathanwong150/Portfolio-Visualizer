@@ -28,6 +28,16 @@ class Settings(BaseSettings):
     # Upgrade-path market data
     fmp_api_key: str = ""
 
+    # Alpha Vantage (Phase 5) — real prices, fundamentals and ETF constituents.
+    alphavantage_api_key: str = ""
+    # The free tier asks for ~1 request/second; this caps one refresh run so a
+    # large portfolio warms up over several runs instead of being throttled.
+    alphavantage_max_calls_per_refresh: int = 40
+    # How long cached data is considered fresh.
+    metadata_ttl_days: int = 30
+    constituents_ttl_days: int = 30
+    prices_ttl_hours: int = 12
+
     # Persistence (Phase 3) — SQLite for the prototype, Postgres later
     database_url: str = "sqlite:///./portfolio.db"
 
@@ -42,6 +52,10 @@ class Settings(BaseSettings):
     def plaid_configured(self) -> bool:
         """True when both Plaid credentials are present."""
         return bool(self.plaid_client_id and self.plaid_secret)
+
+    @property
+    def alphavantage_configured(self) -> bool:
+        return bool(self.alphavantage_api_key)
 
 
 @lru_cache
