@@ -164,6 +164,33 @@ export interface ParsedImport {
   warnings: string[];
 }
 
+export interface RefreshResult {
+  tickers_seen: number;
+  tickers_refreshed: number;
+  calls_made: number;
+  already_fresh: number;
+  still_stale: number;
+  stopped_early: boolean;
+  throttled: boolean;
+  messages: string[];
+}
+
+export interface EtfCoverage {
+  ticker: string;
+  constituents: number;
+  /** Fraction of the fund's weight the constituent list accounts for. */
+  covered_weight: number;
+}
+
+export interface Coverage {
+  total_tickers: number;
+  with_prices: number;
+  with_metadata: number;
+  missing: string[];
+  etfs: EtfCoverage[];
+  configured: boolean;
+}
+
 // Downloads go through an anchor href, not fetch, so these are plain URLs.
 export const exportUrls = {
   holdings: `${BASE}/export/holdings.csv`,
@@ -186,6 +213,8 @@ export const api = {
   plaidExchange: (public_token: string) =>
     post<{ item_id: string }>("/plaid/exchange", { public_token }),
   plaidSync: () => post<SyncResult>("/plaid/sync"),
+  coverage: () => get<Coverage>("/market-data/coverage"),
+  refreshMarketData: () => post<RefreshResult>("/market-data/refresh"),
   importPreview: (file: File) => postFile<ParsedImport>("/import/preview", file),
   importCommit: (payload: { holdings: ParsedHolding[]; accounts: ParsedAccount[] }) =>
     post<SyncResult>("/import/commit", payload),

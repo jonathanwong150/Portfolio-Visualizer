@@ -9,9 +9,9 @@ Python member name ``_401k``); reconstruct with ``AccountType(row.type)``.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -61,6 +61,38 @@ class SecurityRow(Base):
     ticker: Mapped[str] = mapped_column(String, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     type: Mapped[str] = mapped_column(String, nullable=False)  # SecurityType.value
+
+
+class SecurityMetadataRow(Base):
+    """Cached Alpha Vantage ``OVERVIEW``, stored raw.
+
+    Keeping the payload verbatim means a change to the field mapping is a
+    re-map, not a re-fetch — which matters on a rate-limited free tier.
+    """
+
+    __tablename__ = "security_metadata"
+
+    ticker: Mapped[str] = mapped_column(String, primary_key=True)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)  # JSON
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class EtfConstituentRow(Base):
+    __tablename__ = "etf_constituents"
+
+    etf_ticker: Mapped[str] = mapped_column(String, primary_key=True)
+    ticker: Mapped[str] = mapped_column(String, primary_key=True)
+    weight: Mapped[float] = mapped_column(Float, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class PriceHistoryRow(Base):
+    __tablename__ = "price_history"
+
+    ticker: Mapped[str] = mapped_column(String, primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    close: Mapped[float] = mapped_column(Float, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
 class PlaidItemRow(Base):

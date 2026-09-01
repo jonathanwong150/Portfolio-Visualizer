@@ -271,6 +271,22 @@ def test_canonical_template_round_trips():
     assert accounts["Roth IRA"] is AccountType.roth
 
 
+def test_canonical_reads_the_snake_case_columns_our_own_template_ships():
+    """The template writes `cost_basis`; the aliases spell it `cost basis`.
+
+    Underscore normalisation is what bridges them — without it the template's
+    own cost-basis and price columns parse as absent and net worth loses its
+    invested figure entirely.
+    """
+    text = (
+        "ticker,shares,account,cost_basis,last_price\n"
+        "GLD,4,Roth IRA,1622.06,396.75\n"
+    )
+    holding = parse_csv(text).holdings[0]
+    assert holding.cost_basis == 1622.06
+    assert holding.price == 396.75
+
+
 def test_canonical_tolerates_a_missing_cost_basis():
     result = parse_csv("ticker,shares,account\nNVDA,10,brokerage\n")
     assert result.holdings[0].cost_basis is None

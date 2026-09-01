@@ -8,6 +8,7 @@ import {
   type ParsedImport,
 } from "../api";
 import { Card } from "../components/Card";
+import { MarketDataPanel } from "../components/MarketDataPanel";
 import { usd } from "../format";
 
 const ACCOUNT_TYPES: AccountType[] = ["brokerage", "roth", "401k"];
@@ -102,6 +103,8 @@ export function Import() {
       </Card>
 
       {preview && <Preview preview={preview} accounts={accounts} onType={setAccountType} onCommit={commit} busy={busy} />}
+
+      <MarketDataPanel />
     </div>
   );
 }

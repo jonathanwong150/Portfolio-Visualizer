@@ -29,3 +29,11 @@ dist/
 *.sqlite
 *.db
 data/cache/
+
+# Real personal financial data — never commit. This repo pushes to public
+# GitHub, so account screenshots, statements and exports stay local.
+Portfolio/
+*.statement.*
+imports/
+*-positions.csv
+*-activity.csv
