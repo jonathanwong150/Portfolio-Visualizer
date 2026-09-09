@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pytest
 from sqlalchemy import select
 
 from app.db.tables import AccountSnapshotRow
@@ -58,3 +59,23 @@ def test_empty_update_writes_a_marker_and_clears_that_accounts_current_holdings(
         select(AccountSnapshotRow).order_by(AccountSnapshotRow.snapshot_at)
     ).scalars().all()
     assert [marker.snapshot_at for marker in markers] == [jan, feb]
+
+
+def test_invalid_account_reference_does_not_write_an_empty_snapshot(session):
+    account = SnapshotAccount(name="Taxable", account_type=AccountType.brokerage)
+    jan = datetime(2024, 1, 1)
+    write_snapshot(
+        session, [account],
+        [SnapshotHolding(account_key="Taxable", ticker="NVDA", shares=10)], jan,
+    )
+
+    with pytest.raises(ValueError, match="account"):
+        write_snapshot(
+            session, [account],
+            [SnapshotHolding(account_key="Unknown", ticker="AAPL", shares=5)],
+            datetime(2024, 2, 1),
+        )
+
+    assert [h.ticker for h in DbBroker(session).get_holdings()] == ["NVDA"]
+    markers = session.execute(select(AccountSnapshotRow)).scalars().all()
+    assert [marker.snapshot_at for marker in markers] == [jan]

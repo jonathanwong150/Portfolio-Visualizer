@@ -85,6 +85,8 @@ Holdings are **append-only**. Each import or sync replaces the holdings of the
 accounts it supplies, leaving other accounts at their last known holdings.
 The current portfolio combines the latest snapshot **per account**, shared by
 analytics, account summaries, exports, and market-data refresh/coverage.
+The broker also supplies the number of stored accounts, so summary counts
+distinguish accounts sharing a type and include accounts with no holdings.
 
 Each supplied account also gets an `account_snapshots` record, even when it has
 no holdings. An empty update clears that account without reviving an older
@@ -261,4 +263,5 @@ the mobile app.
 
 - 2026-09-08: Preserve independently imported and synced accounts across portfolio
   views and history. Record empty account snapshots, retain compatibility with
-  legacy holdings, and reject CSV commits with unmatched account references.
+  legacy holdings, report actual account counts, and reject unmatched account
+  references from both imports and broker syncs before persistence.

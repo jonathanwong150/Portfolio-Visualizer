@@ -39,6 +39,7 @@ def _assert_portfolio(client, expected_values):
     summary = client.get("/portfolio/summary").json()
     assert summary["net_worth"] == pytest.approx(expected_total)
     accounts = client.get("/accounts").json()["accounts"]
+    assert summary["num_accounts"] == len(accounts)
     assert sum(a["value"] for a in accounts) == pytest.approx(expected_total)
     exposures = client.get("/exposure/companies").json()
     assert {e["ticker"]: e["value"] for e in exposures} == pytest.approx(expected_values)
@@ -130,6 +131,19 @@ def test_empty_plaid_update_clears_only_that_account(client, monkeypatch, sessio
     assert linked["num_holdings"] == 0
     assert linked["last_synced_at"] == response.json()["snapshot_at"]
     assert [p["net_worth"] for p in client.get("/portfolio/history").json()["points"]] == pytest.approx([200, 500, 200])
+
+
+def test_mismatched_plaid_holdings_are_rejected_without_clearing_accounts(
+    client, monkeypatch, session_factory,
+):
+    _import(client, "CSV Brokerage", "NVDA", 2, 100)
+    payload = _linked_account(monkeypatch, session_factory)
+    assert client.post("/plaid/sync").status_code == 200
+    payload["holdings"][0]["plaid_account_id"] = "unmatched-account"
+    response = client.post("/plaid/sync")
+    assert response.status_code == 502
+    _assert_portfolio(client, {"NVDA": 500})
+    assert len(client.get("/portfolio/history").json()["points"]) == 2
 
 
 def test_clearing_final_account_keeps_portfolio_empty_instead_of_showing_demo(

@@ -179,11 +179,12 @@ class PortfolioAnalytics:
             (p.holding.cost_basis or 0.0) for p in self.valued_positions
         )
         accounts = {p.holding.account_type for p in self.valued_positions}
+        account_count = self.broker.get_account_count()
 
         return PortfolioSummary(
             net_worth=total,
             total_invested=total_cost,
-            num_accounts=len(accounts),
+            num_accounts=account_count if account_count is not None else len(accounts),
             num_holdings=len(self.holdings),
             allocation_by_account=_slices(by_account, total),
             allocation_by_asset_type=_slices(by_type, total),

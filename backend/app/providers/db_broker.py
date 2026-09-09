@@ -114,6 +114,11 @@ class DbBroker(BrokerAdapter):
     def __init__(self, session: Session) -> None:
         self._session = session
 
+    def get_account_count(self) -> int:
+        return self._session.execute(
+            select(func.count()).select_from(AccountRow)
+        ).scalar_one()
+
     def get_holdings(self) -> list[Holding]:
         accounts = {
             account.id: account

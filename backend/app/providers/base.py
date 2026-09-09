@@ -15,6 +15,10 @@ class BrokerAdapter(ABC):
     def get_holdings(self) -> list[Holding]:
         ...
 
+    def get_account_count(self) -> int | None:
+        """Known account count, including empty accounts, if identities exist."""
+        return None
+
 
 class MarketDataProvider(ABC):
     """Source of security metadata (sector, market cap, beta, ...)."""

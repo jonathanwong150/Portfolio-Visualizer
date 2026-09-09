@@ -38,6 +38,18 @@ class SnapshotBroker(BrokerAdapter):
         self._fallback = fallback
         self._should_fallback = should_fallback or (lambda: True)
 
+    def get_account_count(self) -> int | None:
+        if self._session is not None:
+            return self._stored_account_count(self._session)
+        with self._session_factory() as session:
+            return self._stored_account_count(session)
+
+    @staticmethod
+    def _stored_account_count(session: Session) -> int | None:
+        if latest_snapshot_at(session) is None:
+            return None
+        return DbBroker(session).get_account_count()
+
     def get_holdings(self) -> list[Holding]:
         # A session passed in belongs to the request; don't close it.
         if self._session is not None:

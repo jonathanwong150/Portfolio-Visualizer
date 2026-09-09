@@ -42,7 +42,12 @@ from app.services.export import exposure_csv, holdings_csv
 from app.services import market_refresh
 from app.services.import_csv import UnknownFormat, parse_csv
 from app.services.market_refresh import Coverage, RefreshResult
-from app.services.snapshot import SnapshotAccount, SnapshotHolding, write_snapshot
+from app.services.snapshot import (
+    InvalidSnapshot,
+    SnapshotAccount,
+    SnapshotHolding,
+    write_snapshot,
+)
 from app.services.sync import PlaidNotConfigured, sync_holdings
 
 settings = get_settings()
@@ -204,11 +209,6 @@ def import_commit(
     """Persist a reviewed preview as a new snapshot."""
     if not payload.holdings:
         raise HTTPException(status_code=400, detail="Nothing to import.")
-    account_names = {account.name for account in payload.accounts}
-    if any(holding.account_name not in account_names for holding in payload.holdings):
-        raise HTTPException(
-            status_code=400, detail="Every holding must belong to an imported account."
-        )
 
     accounts = [
         SnapshotAccount(name=account.name, account_type=account.account_type)
@@ -226,7 +226,10 @@ def import_commit(
         )
         for holding in payload.holdings
     ]
-    return write_snapshot(db, accounts, holdings)
+    try:
+        return write_snapshot(db, accounts, holdings)
+    except InvalidSnapshot as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # ---- CSV export (Phase 4) ----------------------------------------------------
@@ -287,6 +290,10 @@ def plaid_sync(db: Session = Depends(get_db)) -> SyncResult:
         return sync_holdings(db)
     except PlaidNotConfigured as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except InvalidSnapshot as exc:
+        raise HTTPException(
+            status_code=502, detail="Broker holdings did not match the supplied accounts."
+        ) from exc
 
 
 @app.get("/accounts", response_model=AccountsResponse)

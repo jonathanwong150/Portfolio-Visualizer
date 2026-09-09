@@ -20,6 +20,10 @@ from app.db.tables import AccountRow, AccountSnapshotRow, HoldingRow, SecurityRo
 from app.models import AccountType, SecurityType, SyncResult
 
 
+class InvalidSnapshot(ValueError):
+    """A source supplied holdings that cannot be assigned to its accounts."""
+
+
 @dataclass
 class SnapshotAccount:
     name: str
@@ -51,6 +55,9 @@ def write_snapshot(
     snapshot_at: datetime | None = None,
 ) -> SyncResult:
     """Upsert accounts, append one holdings snapshot, upsert securities."""
+    account_keys = {account.key for account in accounts}
+    if any(holding.account_key not in account_keys for holding in holdings):
+        raise InvalidSnapshot("Every holding must belong to a supplied account.")
     snapshot_at = snapshot_at or datetime.utcnow()
     account_ids: dict[str, int] = {}
 
@@ -84,9 +91,7 @@ def write_snapshot(
 
     written = 0
     for holding in holdings:
-        account_id = account_ids.get(holding.account_key)
-        if account_id is None:
-            continue
+        account_id = account_ids[holding.account_key]
         session.add(
             HoldingRow(
                 account_id=account_id,
