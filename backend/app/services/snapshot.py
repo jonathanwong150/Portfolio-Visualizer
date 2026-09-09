@@ -16,7 +16,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.tables import AccountRow, HoldingRow, SecurityRow
+from app.db.tables import AccountRow, AccountSnapshotRow, HoldingRow, SecurityRow
 from app.models import AccountType, SecurityType, SyncResult
 
 
@@ -76,6 +76,11 @@ def write_snapshot(
         row.institution = account.institution or row.institution
         session.flush()
         account_ids[account.key] = row.id
+
+    # Holding rows cannot represent an observed empty account, so record every
+    # supplied account independently of whether it currently has positions.
+    for account_id in set(account_ids.values()):
+        session.add(AccountSnapshotRow(account_id=account_id, snapshot_at=snapshot_at))
 
     written = 0
     for holding in holdings:

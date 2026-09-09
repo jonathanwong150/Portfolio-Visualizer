@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.db.tables import AccountRow, HoldingRow
+from app.db.tables import AccountRow, AccountSnapshotRow, HoldingRow
 from app.models import AccountType, Holding
 from app.providers.base import BrokerAdapter
 from app.providers.snapshot_broker import SnapshotBroker
@@ -63,6 +63,22 @@ def test_a_suppressed_fallback_yields_empty_rather_than_demo_data(session_factor
     broker = SnapshotBroker(
         session_factory=session_factory, fallback=fallback, should_fallback=lambda: False
     )
+
+    assert broker.get_holdings() == []
+    assert fallback.calls == 0
+
+
+def test_known_empty_snapshot_does_not_fall_back_to_demo_data(session_factory):
+    db = session_factory()
+    account = AccountRow(name="Closed Account", type=AccountType.brokerage.value)
+    db.add(account)
+    db.flush()
+    db.add(AccountSnapshotRow(account_id=account.id, snapshot_at=datetime(2026, 9, 1)))
+    db.commit()
+    db.close()
+    fallback = StubFallback()
+
+    broker = SnapshotBroker(session_factory=session_factory, fallback=fallback)
 
     assert broker.get_holdings() == []
     assert fallback.calls == 0

@@ -1,8 +1,8 @@
 """ORM tables backing the Plaid sync and multi-account aggregation.
 
-Holdings are stored as immutable **snapshots**: every sync writes a fresh set of
-rows sharing one ``snapshot_at``, so history is preserved and the current
-portfolio is simply "all rows at max(snapshot_at)".
+Holdings are stored as immutable, account-scoped **snapshots**. Current state is
+the latest snapshot per account, while explicit markers preserve empty account
+updates and let history carry unchanged accounts forward.
 
 ``AccountRow.type`` stores the ``AccountType`` *value* (``"401k"``, not the
 Python member name ``_401k``); reconstruct with ``AccountType(row.type)``.
@@ -36,6 +36,19 @@ class AccountRow(Base):
 
     holdings: Mapped[list[HoldingRow]] = relationship(
         back_populates="account", cascade="all, delete-orphan"
+    )
+
+
+class AccountSnapshotRow(Base):
+    """Records that an account was observed, including when it was empty."""
+
+    __tablename__ = "account_snapshots"
+
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("accounts.id"), primary_key=True
+    )
+    snapshot_at: Mapped[datetime] = mapped_column(
+        DateTime, primary_key=True, index=True
     )
 
 

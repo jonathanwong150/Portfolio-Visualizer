@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from app.db.tables import AccountRow, HoldingRow
+from app.db.tables import AccountRow, AccountSnapshotRow, HoldingRow
 from app.models import AccountType
 from app.services import market_cache, market_refresh
 
@@ -278,6 +278,29 @@ def test_coverage_reports_which_tickers_have_real_data(session, api):
     assert coverage.with_prices == 2
     assert coverage.with_metadata == 2
     assert coverage.missing == []
+
+
+def test_coverage_includes_latest_tickers_from_staggered_accounts(session):
+    from datetime import datetime
+
+    taxable = AccountRow(name="Taxable", type=AccountType.brokerage.value)
+    roth = AccountRow(name="Roth", type=AccountType.roth.value)
+    session.add_all([taxable, roth])
+    session.flush()
+    jan = datetime(2026, 1, 1)
+    feb = datetime(2026, 2, 1)
+    session.add_all(
+        [
+            AccountSnapshotRow(account_id=taxable.id, snapshot_at=jan),
+            HoldingRow(account_id=taxable.id, ticker="NVDA", shares=1, snapshot_at=jan),
+            AccountSnapshotRow(account_id=roth.id, snapshot_at=feb),
+            HoldingRow(account_id=roth.id, ticker="VTI", shares=1, snapshot_at=feb),
+        ]
+    )
+    session.commit()
+
+    assert market_refresh.held_tickers(session) == ["NVDA", "VTI"]
+    assert market_refresh.coverage(session).total_tickers == 2
 
 
 def test_coverage_names_what_is_missing(session):

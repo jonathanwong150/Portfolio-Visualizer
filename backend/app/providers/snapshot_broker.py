@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Holding
 from app.providers.base import BrokerAdapter
-from app.providers.db_broker import DbBroker
+from app.providers.db_broker import DbBroker, latest_snapshot_at
 
 
 class SnapshotBroker(BrokerAdapter):
@@ -42,15 +42,17 @@ class SnapshotBroker(BrokerAdapter):
         # A session passed in belongs to the request; don't close it.
         if self._session is not None:
             holdings = DbBroker(self._session).get_holdings()
+            has_snapshot = latest_snapshot_at(self._session) is not None
         else:
             session = self._session_factory()
             try:
                 holdings = DbBroker(session).get_holdings()
+                has_snapshot = latest_snapshot_at(session) is not None
             finally:
                 session.close()
 
         if holdings:
             return holdings
-        if self._fallback is not None and self._should_fallback():
+        if not has_snapshot and self._fallback is not None and self._should_fallback():
             return self._fallback.get_holdings()
         return []

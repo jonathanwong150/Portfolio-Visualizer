@@ -14,11 +14,9 @@ import logging
 import time
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.db.tables import HoldingRow
 from app.models import SecurityType
 from app.providers.alphavantage import (
     REQUEST_INTERVAL_SECONDS,
@@ -28,7 +26,7 @@ from app.providers.alphavantage import (
     has_error,
     is_throttled,
 )
-from app.providers.db_broker import latest_snapshot_at
+from app.providers.db_broker import current_holding_rows
 from app.services import market_cache
 
 logger = logging.getLogger(__name__)
@@ -71,14 +69,8 @@ def _pace() -> None:
 
 
 def held_tickers(session: Session) -> list[str]:
-    """Tickers in the newest snapshot, which is what the app displays."""
-    snapshot_at = latest_snapshot_at(session)
-    if snapshot_at is None:
-        return []
-    rows = session.execute(
-        select(HoldingRow.ticker).where(HoldingRow.snapshot_at == snapshot_at).distinct()
-    ).scalars()
-    return sorted({t.upper() for t in rows})
+    """Tickers in each account's latest snapshot, matching the app display."""
+    return sorted({row.ticker.upper() for row in current_holding_rows(session)})
 
 
 def _looks_like_an_etf(session: Session, ticker: str) -> bool:

@@ -66,6 +66,7 @@ has no external dependencies; the same models run on Postgres unchanged.
 ```
 users
   └── accounts (plaid_account_id, name, type: brokerage | roth | 401k, institution)
+        ├── account_snapshots (account_id, snapshot_at)
         └── holdings (ticker, shares, cost_basis, price, snapshot_at)
 
 securities (ticker, name, type: stock|etf)
@@ -80,10 +81,23 @@ populated from Alpha Vantage; `etf_seed.json` is the offline fallback.
 
 ### Holdings snapshots
 
-Holdings are **append-only**. Every sync writes a fresh set of rows sharing one
-`snapshot_at`, so history is preserved and "the current portfolio" is simply all
-rows at `max(snapshot_at)`. Accounts, by contrast, are upserted in place on
-`plaid_account_id`.
+Holdings are **append-only**. Each import or sync replaces the holdings of the
+accounts it supplies, leaving other accounts at their last known holdings.
+The current portfolio combines the latest snapshot **per account**, shared by
+analytics, account summaries, exports, and market-data refresh/coverage.
+
+Each supplied account also gets an `account_snapshots` record, even when it has
+no holdings. An empty update clears that account without reviving an older
+position or triggering demo fallback. Demo holdings are available only before
+any snapshot has been recorded. A CSV commit still requires nonempty holdings;
+Plaid can report an account with none.
+
+Snapshot selection includes legacy timestamps from `holdings`, so existing data
+works without backfill. Startup creates the additive `account_snapshots` table;
+no existing tables or rows are replaced. Reverting to code that ignores these
+records loses empty-account semantics and restores the global-snapshot bug.
+Accounts are upserted by `plaid_account_id` for Plaid or by name for CSV imports;
+cross-source account reconciliation remains a separate concern.
 
 ### CSV import (Phase 5)
 
@@ -99,7 +113,7 @@ Canonical template           ─┘        │ ParsedImport (+ skipped, warnings
                                     accounts (upsert) + holdings (new snapshot)
                                                           │
                                     SnapshotBroker ───────┘  (MockBroker fallback
-                                                              only while empty)
+                                                              before any snapshot)
 ```
 
 `write_snapshot` is the single write path, shared with Plaid sync. Columns are
@@ -143,8 +157,10 @@ the fraction of the fund its constituent list covers.
 
 ### Net-worth history (Phase 4)
 
-`GET /portfolio/history` reads *every* snapshot (`db_broker.snapshot_history`)
-and values each one at the prices in effect **on its own date**, via
+`GET /portfolio/history` reconstructs the complete portfolio at each recorded
+account update (`db_broker.snapshot_history`), carrying unchanged accounts
+forward and replacing or clearing updated accounts. It values each point at
+the prices in effect **on its own date**, via
 `MarketDataProvider.get_price_on`. Valuing every snapshot at today's prices
 would flatten the market out and turn the series into a contributions chart, so
 the curve moves on both market moves and holdings changes.
@@ -169,7 +185,7 @@ POST /plaid/sync ──▶ services/sync.sync_holdings() ◀──────�
                           ▼
                     accounts (upsert) + holdings (new snapshot) + securities (upsert)
                           │
-        DbBroker ─────────┘  reads max(snapshot_at) → list[Holding]
+        DbBroker ─────────┘  reads latest snapshot per account → list[Holding]
              ▲
         PlaidBroker  (falls back to MockBroker when unconfigured and unsynced)
              ▲
@@ -240,3 +256,9 @@ the mobile app.
   `ETFHoldingsProvider` with a seed fallback.
 - **Plaid approval + cost** can gate live sync → mitigated by `MockBroker` + Sandbox-first.
 - **Factor analysis** is approximate in the prototype → clearly upgradeable.
+
+## Completed Work
+
+- 2026-09-08: Preserve independently imported and synced accounts across portfolio
+  views and history. Record empty account snapshots, retain compatibility with
+  legacy holdings, and reject CSV commits with unmatched account references.

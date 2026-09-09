@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.analytics.engine import PortfolioAnalytics
@@ -32,7 +32,11 @@ from app.models import (
     RiskMetrics,
     SyncResult,
 )
-from app.providers.db_broker import snapshot_history
+from app.providers.db_broker import (
+    current_holding_rows,
+    latest_account_snapshot_times,
+    snapshot_history,
+)
 from app.providers.factory import get_market_data
 from app.services.export import exposure_csv, holdings_csv
 from app.services import market_refresh
@@ -200,6 +204,11 @@ def import_commit(
     """Persist a reviewed preview as a new snapshot."""
     if not payload.holdings:
         raise HTTPException(status_code=400, detail="Nothing to import.")
+    account_names = {account.name for account in payload.accounts}
+    if any(holding.account_name not in account_names for holding in payload.holdings):
+        raise HTTPException(
+            status_code=400, detail="Every holding must belong to an imported account."
+        )
 
     accounts = [
         SnapshotAccount(name=account.name, account_type=account.account_type)
@@ -285,26 +294,15 @@ def accounts(db: Session = Depends(get_db)) -> AccountsResponse:
     """Synced accounts with their holdings valued at current prices."""
     market = get_market_data(session=db)
     rows = db.execute(select(AccountRow)).scalars().all()
+    snapshot_times = latest_account_snapshot_times(db)
+    holdings_by_account: dict[int, list[HoldingRow]] = {}
+    for holding in current_holding_rows(db):
+        holdings_by_account.setdefault(holding.account_id, []).append(holding)
 
     summaries: list[AccountSummary] = []
     for account in rows:
-        last_synced_at = db.execute(
-            select(func.max(HoldingRow.snapshot_at)).where(
-                HoldingRow.account_id == account.id
-            )
-        ).scalar_one_or_none()
-        holdings = (
-            db.execute(
-                select(HoldingRow).where(
-                    HoldingRow.account_id == account.id,
-                    HoldingRow.snapshot_at == last_synced_at,
-                )
-            )
-            .scalars()
-            .all()
-            if last_synced_at is not None
-            else []
-        )
+        last_synced_at = snapshot_times.get(account.id)
+        holdings = holdings_by_account.get(account.id, [])
         summaries.append(
             AccountSummary(
                 id=account.id,
