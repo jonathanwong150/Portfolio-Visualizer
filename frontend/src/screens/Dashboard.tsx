@@ -6,7 +6,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import { api, exportUrls } from "../api";
+import { api, exportUrls, type PortfolioSummary } from "../api";
 import { Card, Stat } from "../components/Card";
 import { NetWorthChart } from "../components/NetWorthChart";
 import { CHART_COLORS, pct, usd } from "../format";
@@ -40,7 +40,7 @@ export function Dashboard({ onConnect, onImport }: DashboardProps) {
     <div className="space-y-5">
       {s.data_status !== "stored" && (
         <PortfolioIntro
-          isDemo={s.data_status === "demo"}
+          status={s.data_status}
           onConnect={onConnect}
           onImport={onImport}
         />
@@ -131,20 +131,32 @@ export function Dashboard({ onConnect, onImport }: DashboardProps) {
 }
 
 function PortfolioIntro({
-  isDemo,
+  status,
   onConnect,
   onImport,
 }: {
-  isDemo: boolean;
+  status: PortfolioSummary["data_status"];
   onConnect?: () => void;
   onImport?: () => void;
 }) {
+  const isDemo = status === "demo";
+  const heading = isDemo
+    ? "Example portfolio"
+    : status === "empty"
+      ? "Add your portfolio"
+      : "Portfolio source unknown";
+  const description = isDemo
+    ? "These sample holdings show what consolidated look-through analysis looks like. Add your accounts to see your own portfolio."
+    : status === "empty"
+      ? "Connect a supported brokerage or import a CSV to build your consolidated portfolio."
+      : "This server did not identify whether these figures are examples or stored holdings. Connect an account or import a CSV when you are ready to replace them.";
+
   return (
     <div className="rounded-2xl border border-accent/30 bg-accentSoft px-5 py-5 md:flex md:items-center md:justify-between md:gap-6">
       <div>
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-semibold">
-            {isDemo ? "Example portfolio" : "Add your portfolio"}
+            {heading}
           </h2>
           {isDemo && (
             <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-semibold text-accent">
@@ -152,11 +164,7 @@ function PortfolioIntro({
             </span>
           )}
         </div>
-        <p className="mt-1 max-w-xl text-sm text-muted">
-          {isDemo
-            ? "These sample holdings show what consolidated look-through analysis looks like. Add your accounts to see your own portfolio."
-            : "Connect a supported brokerage or import a CSV to build your consolidated portfolio."}
-        </p>
+        <p className="mt-1 max-w-xl text-sm text-muted">{description}</p>
       </div>
       <div className="mt-4 flex shrink-0 flex-wrap gap-3 md:mt-0">
         <button

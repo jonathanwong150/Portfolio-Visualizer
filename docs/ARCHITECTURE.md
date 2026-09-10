@@ -116,7 +116,8 @@ cross-source account reconciliation remains a separate concern.
 the configured broker is serving examples, `stored` after any snapshot exists
 (including a deliberately empty one), and `empty` when configured Plaid is
 waiting for its first sync. It does not guess whether stored rows came from CSV,
-Plaid, or both.
+Plaid, or both. The field is additive: a frontend talking to an older backend
+that omits it labels the source unknown rather than guessing demo or stored.
 
 ### CSV import (Phase 5)
 
@@ -256,9 +257,10 @@ the mobile app.
 - **Overlap** — ETF overlap heatmap.
 - **Sectors / Factors** — toggleable bar/pie/treemap; factor tilt bars.
 - **Risk** — beta/vol/Sharpe/drawdown cards + correlation heatmap.
-- **Accounts** — connect via Plaid Link, automatically sync after exchange, retry
-  each failed stage safely, manually resync, or continue to CSV when linking is
-  unavailable.
+- **Accounts** — connect via Plaid Link and automatically sync after exchange.
+  Token or exchange failures restart Link because Plaid public tokens are
+  single-use; a confirmed exchange followed by sync failure retries only sync.
+  SDK load failures require a page reload. Manual resync and CSV remain available.
 
 ## Roadmap
 

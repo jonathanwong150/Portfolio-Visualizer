@@ -35,12 +35,21 @@ export function Accounts({ onImport, onViewPortfolio }: AccountsProps) {
   const qc = useQueryClient();
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: api.accounts });
   const [linkToken, setLinkToken] = useState<string | null>(null);
-  const [publicToken, setPublicToken] = useState<string | null>(null);
   const [linkProblem, setLinkProblem] = useState<string | null>(null);
+  const [sdkProblem, setSdkProblem] = useState<string | null>(null);
   const [linkExit, setLinkExit] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const openedToken = useRef<string | null>(null);
   const returnAfterSync = useRef(false);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      returnAfterSync.current = false;
+    };
+  }, []);
 
   const invalidateAll = () =>
     Promise.all(
@@ -50,11 +59,13 @@ export function Accounts({ onImport, onViewPortfolio }: AccountsProps) {
   const sync = useMutation({
     mutationFn: api.plaidSync,
     onSuccess: async (result) => {
-      setSuccess(
-        `Synced ${result.holdings} holdings across ${result.accounts} accounts.`,
-      );
+      if (mounted.current) {
+        setSuccess(
+          `Synced ${result.holdings} holdings across ${result.accounts} accounts.`,
+        );
+      }
       await invalidateAll();
-      if (returnAfterSync.current) {
+      if (mounted.current && returnAfterSync.current) {
         returnAfterSync.current = false;
         onViewPortfolio?.();
       }
@@ -85,7 +96,6 @@ export function Accounts({ onImport, onViewPortfolio }: AccountsProps) {
     token: linkToken,
     onSuccess: (token) => {
       setLinkToken(null);
-      setPublicToken(token);
       exchange.reset();
       exchange.mutate(token);
     },
@@ -112,16 +122,16 @@ export function Accounts({ onImport, onViewPortfolio }: AccountsProps) {
     if (!linkToken || !plaidError) return;
     setLinkToken(null);
     openedToken.current = null;
-    setLinkProblem(
+    setSdkProblem(
       `Could not load bank connection. ${plaidError.message || "Please try again."}`,
     );
   }, [linkToken, plaidError]);
 
   const startLink = () => {
+    if (sdkProblem) return;
     setSuccess(null);
     setLinkProblem(null);
     setLinkExit(null);
-    setPublicToken(null);
     setLinkToken(null);
     openedToken.current = null;
     returnAfterSync.current = false;
@@ -184,7 +194,7 @@ export function Accounts({ onImport, onViewPortfolio }: AccountsProps) {
         <Card className="flex items-center gap-3">
           <button
             onClick={startLink}
-            disabled={!plaid_configured || busy}
+            disabled={!plaid_configured || busy || Boolean(sdkProblem)}
             className="px-4 py-2 rounded-lg text-sm font-medium bg-accent text-black disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {connectLabel}
@@ -207,13 +217,12 @@ export function Accounts({ onImport, onViewPortfolio }: AccountsProps) {
           disabled={busy}
         />
       )}
+      {sdkProblem && <ReloadError message={sdkProblem} />}
       {exchange.error && (
         <FlowError
-          message={`Could not finish linking. ${exchange.error.message}`}
-          retryLabel="Retry exchange"
-          onRetry={() => {
-            if (!busy && publicToken) exchange.mutate(publicToken);
-          }}
+          message={`Could not finish linking. ${exchange.error.message} A public token can only be used once, so restart connection to try again. If the exchange may have succeeded before its response was lost, Sync can recover it.`}
+          retryLabel="Restart connection"
+          onRetry={startLink}
           disabled={busy}
         />
       )}
@@ -247,6 +256,20 @@ export function Accounts({ onImport, onViewPortfolio }: AccountsProps) {
           </ul>
         )}
       </Card>
+    </div>
+  );
+}
+
+function ReloadError({ message }: { message: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 text-danger text-sm">
+      <span>{message}</span>
+      <a
+        href={window.location.href}
+        className="rounded-lg bg-surface2 px-3 py-1.5 font-medium text-white"
+      >
+        Reload page
+      </a>
     </div>
   );
 }

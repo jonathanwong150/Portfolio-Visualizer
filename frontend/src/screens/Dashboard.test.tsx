@@ -160,6 +160,20 @@ describe("Dashboard", () => {
     expect(screen.queryByText("Example portfolio")).not.toBeInTheDocument();
     expect(screen.queryByText("Add your portfolio")).not.toBeInTheDocument();
   });
+
+  it("does not guess the source when an older backend omits data_status", async () => {
+    resolveAll();
+    const legacySummary: PortfolioSummary = { ...SUMMARY };
+    delete legacySummary.data_status;
+    vi.mocked(api.summary).mockResolvedValue(legacySummary);
+
+    renderDashboard();
+
+    expect(await screen.findByText("Portfolio source unknown")).toBeInTheDocument();
+    expect(screen.getByText(/did not identify whether these figures are examples or stored/i)).toBeInTheDocument();
+    expect(screen.queryByText("Example portfolio")).not.toBeInTheDocument();
+    expect(screen.queryByText("Add your portfolio")).not.toBeInTheDocument();
+  });
   it("shows a loading state before the queries settle", () => {
     // Never-resolving promises hold the component in its pending state.
     const pending = new Promise<never>(() => {});

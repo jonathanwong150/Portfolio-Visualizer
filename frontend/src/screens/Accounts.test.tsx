@@ -118,7 +118,10 @@ describe("Accounts", () => {
     await waitFor(() => expect(plaid.open).toHaveBeenCalledOnce());
   });
 
-  it("surfaces exchange failure without syncing and can retry exchange", async () => {
+  it("restarts Link with a fresh public token after exchange failure", async () => {
+    vi.mocked(api.plaidLink)
+      .mockResolvedValueOnce({ configured: true, link_token: "first-link-token" })
+      .mockResolvedValueOnce({ configured: true, link_token: "second-link-token" });
     vi.mocked(api.plaidExchange)
       .mockRejectedValueOnce(new Error("Exchange failed"))
       .mockResolvedValueOnce({ item_id: "item" });
@@ -129,24 +132,33 @@ describe("Accounts", () => {
 
     expect(await screen.findByText(/could not finish linking/i)).toBeInTheDocument();
     expect(api.plaidSync).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Retry exchange" }));
+    expect(screen.getByText(/public token can only be used once/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Restart connection" }));
+
+    await waitFor(() => expect(api.plaidLink).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(plaid.open).toHaveBeenCalledTimes(2));
+    act(() => plaid.options!.onSuccess("fresh-public-token"));
 
     await waitFor(() => expect(api.plaidExchange).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(api.plaidExchange).mock.calls.map(([token]) => token)).toEqual([
+      "public-token",
+      "fresh-public-token",
+    ]);
     await waitFor(() => expect(api.plaidSync).toHaveBeenCalledOnce());
   });
 
-  it("disables exchange retry while a manual sync is pending", async () => {
+  it("disables connection restart while a manual sync is pending", async () => {
     vi.mocked(api.plaidExchange).mockRejectedValue(new Error("Exchange failed"));
     vi.mocked(api.plaidSync).mockReturnValue(new Promise(() => {}));
     renderAccounts();
     fireEvent.click(await screen.findByRole("button", { name: "Connect account" }));
     await waitFor(() => expect(plaid.open).toHaveBeenCalledOnce());
     act(() => plaid.options!.onSuccess("public-token"));
-    expect(await screen.findByRole("button", { name: "Retry exchange" })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "Restart connection" })).toBeEnabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Sync" }));
 
-    expect(screen.getByRole("button", { name: "Retry exchange" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Restart connection" })).toBeDisabled();
   });
 
   it("disables connection retry while a manual sync is pending", async () => {
@@ -179,6 +191,29 @@ describe("Accounts", () => {
     await waitFor(() => expect(onViewPortfolio).toHaveBeenCalledOnce());
   });
 
+  it("does not navigate when a background sync finishes after Accounts unmounts", async () => {
+    let resolveSync!: (value: typeof SYNCED) => void;
+    vi.mocked(api.plaidSync).mockReturnValue(
+      new Promise((resolve) => {
+        resolveSync = resolve;
+      }),
+    );
+    const onViewPortfolio = vi.fn();
+    const { client, unmount } = renderAccounts({ onViewPortfolio });
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Connect account" }));
+    await waitFor(() => expect(plaid.open).toHaveBeenCalledOnce());
+    act(() => plaid.options!.onSuccess("public-token"));
+    await waitFor(() => expect(api.plaidSync).toHaveBeenCalledOnce());
+
+    unmount();
+    await act(async () => resolveSync(SYNCED));
+
+    await waitFor(() => expect(invalidate).toHaveBeenCalled());
+    expect(onViewPortfolio).not.toHaveBeenCalled();
+  });
+
   it("cleans up a canceled Link session without reopening it", async () => {
     renderAccounts();
     fireEvent.click(await screen.findByRole("button", { name: "Connect account" }));
@@ -190,7 +225,7 @@ describe("Accounts", () => {
     expect(plaid.open).toHaveBeenCalledOnce();
   });
 
-  it("surfaces an SDK load failure and releases the connection controls", async () => {
+  it("requires a page reload after a persistent SDK load failure", async () => {
     const view = renderAccounts();
     fireEvent.click(await screen.findByRole("button", { name: "Connect account" }));
     await waitFor(() => expect(plaid.open).toHaveBeenCalledOnce());
@@ -199,8 +234,18 @@ describe("Accounts", () => {
     view.rerender(<Accounts />);
 
     expect(await screen.findByText(/could not load bank connection.*sdk unavailable/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Connect account" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Retry connection" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Connect account" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Retry connection" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Reload page" })).toHaveAttribute(
+      "href",
+      window.location.href,
+    );
+
+    // The hook error survives React rerenders, so an in-place token retry must
+    // remain unavailable until the document (and Plaid SDK) is reloaded.
+    view.rerender(<Accounts />);
+    expect(screen.getByRole("button", { name: "Connect account" })).toBeDisabled();
+    expect(api.plaidLink).toHaveBeenCalledOnce();
   });
 
   it("keeps manual sync and reports success without navigating", async () => {
