@@ -105,9 +105,9 @@ class PortfolioAnalytics:
         as an explicit unresolved row, so named-company exposure is never
         inferred from partial data and all rows still reconcile to net worth.
 
-        Invalid constituent lists are not partially trusted: negative or
-        non-finite weights, or total weight materially above 100%, make the
-        fund's entire position unresolved.
+        Invalid constituent lists are not partially trusted: negative,
+        non-finite, or individually over-100% weights, or any total weight
+        above 100%, make the fund's entire position unresolved.
         """
         # The boolean tag is part of the identity: a real security is allowed
         # to have the same ticker text as the unresolved display namespace.

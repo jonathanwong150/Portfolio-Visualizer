@@ -81,15 +81,15 @@ export function Dashboard() {
           ) : (
             <ul className="space-y-2">
               {top.map((e, i) => (
-              <li key={`${e.is_unresolved ? "unresolved" : "named"}:${e.ticker}`} className="flex items-center gap-3">
-                <span
-                  className="w-2.5 h-2.5 rounded-full"
-                  style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
-                />
-                <span className="font-medium w-16">{e.ticker}</span>
-                <span className="flex-1 text-muted text-sm truncate">{e.name}</span>
-                <span className="font-semibold">{pct(e.weight)}</span>
-              </li>
+                <li key={`named:${e.ticker}`} className="flex items-center gap-3">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
+                  />
+                  <span className="font-medium w-16">{e.ticker}</span>
+                  <span className="flex-1 text-muted text-sm truncate">{e.name}</span>
+                  <span className="font-semibold">{pct(e.weight)}</span>
+                </li>
               ))}
             </ul>
           )}
