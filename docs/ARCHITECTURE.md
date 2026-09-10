@@ -46,9 +46,11 @@ Partial data remains partial: reported constituent weights are used verbatim,
 and each fund's uncovered value is returned as an explicit
 `UNRESOLVED:<fund>` exposure. It remains in portfolio, sector/geography, and
 export totals, but is excluded from named-company rankings and factor scores.
-An ETF with no constituents is 100% unresolved. A list with negative or
-non-finite weights, or a total materially above 100%, is rejected as a whole so
-bad source data cannot be normalized or double-counted.
+An ETF with no constituents is 100% unresolved. A list with negative,
+non-finite, or individually over-100% weights, or any stably summed total above
+100%, is rejected as a whole so bad source data cannot create value. The API's
+logical exposure identity is `(is_unresolved, ticker)`: the display namespace
+may match a real ticker without merging the two rows.
 
 ## Analytics Engine
 

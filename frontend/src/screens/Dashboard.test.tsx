@@ -253,8 +253,20 @@ describe("Dashboard", () => {
     renderDashboard();
 
     expect(await screen.findByText("Top Named Company Exposures (look-through)")).toBeInTheDocument();
+    expect(screen.getByText("No named company exposure yet.")).toBeInTheDocument();
     // Net worth and total invested both read $0 on an empty portfolio.
     expect(screen.getAllByText("$0")).toHaveLength(2);
     expect(screen.queryByText("NVDA")).not.toBeInTheDocument();
+  });
+
+  it("explains when the portfolio is entirely unresolved", async () => {
+    vi.mocked(api.summary).mockResolvedValue(SUMMARY);
+    vi.mocked(api.companies).mockResolvedValue([COMPANIES[2]]);
+    vi.mocked(api.risk).mockResolvedValue(RISK);
+
+    renderDashboard();
+
+    expect(await screen.findByText("No named company exposure yet.")).toBeInTheDocument();
+    expect(screen.getByText("50.0% unresolved")).toBeInTheDocument();
   });
 });

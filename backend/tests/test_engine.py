@@ -233,6 +233,38 @@ def test_direct_and_multiple_etf_exposures_net_without_merging_unresolved_funds(
     assert exposure["UNRESOLVED:FUND2"].value == pytest.approx(250)
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+def test_reserved_ticker_text_does_not_merge_real_and_unresolved_exposure(reverse):
+    holdings = [
+        Holding(ticker="TOY", shares=10, account_type=AccountType.brokerage),
+        Holding(
+            ticker="UNRESOLVED:TOY",
+            shares=2,
+            account_type=AccountType.brokerage,
+        ),
+    ]
+    if reverse:
+        holdings.reverse()
+    eng = _fixed_engine(
+        holdings,
+        {"TOY": [("UNRESOLVED:TOY", 0.2)]},
+    )
+
+    collisions = [
+        exposure
+        for exposure in eng.company_exposure()
+        if exposure.ticker == "UNRESOLVED:TOY"
+    ]
+
+    assert len(collisions) == 2
+    real = next(exposure for exposure in collisions if not exposure.is_unresolved)
+    unresolved = next(exposure for exposure in collisions if exposure.is_unresolved)
+    assert real.direct_value == pytest.approx(200)
+    assert real.via_etf_value == pytest.approx(200)
+    assert unresolved.value == pytest.approx(800)
+    assert sum(exposure.value for exposure in collisions) == pytest.approx(eng.total_value)
+
+
 def test_etf_with_no_constituents_is_entirely_unresolved():
     eng = _fixed_engine(
         [Holding(ticker="EMPTY", shares=10, account_type=AccountType.brokerage)],
@@ -255,12 +287,26 @@ def test_fully_covered_etf_has_no_unresolved_row():
     assert sum(e.value for e in exposure) == pytest.approx(eng.total_value)
 
 
+def test_stable_sum_recognizes_exact_full_coverage():
+    eng = _fixed_engine(
+        [Holding(ticker="FULL", shares=10, account_type=AccountType.brokerage)],
+        {"FULL": [(f"STOCK{i}", 0.1) for i in range(10)]},
+    )
+
+    exposure = eng.company_exposure()
+
+    assert not any(e.is_unresolved for e in exposure)
+    assert sum(e.value for e in exposure) == pytest.approx(eng.total_value)
+
+
 @pytest.mark.parametrize(
     "constituents",
     [
         [("AAPL", -0.1), ("MSFT", 0.2)],
         [("AAPL", float("nan"))],
         [("AAPL", float("inf"))],
+        [("AAPL", 1.000_000_000_1)],
+        [("AAPL", 0.6), ("MSFT", 0.400_000_000_1)],
         [("AAPL", 0.6), ("MSFT", 0.400_001)],
     ],
 )

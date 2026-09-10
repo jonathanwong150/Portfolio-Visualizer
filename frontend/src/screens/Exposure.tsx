@@ -81,7 +81,7 @@ export function Exposure() {
             </p>
             <div className="mt-3 space-y-2">
               {unresolved.map((exposure) => (
-                <div key={exposure.ticker} className="flex justify-between gap-3 text-sm">
+                <div key={`unresolved:${exposure.ticker}`} className="flex justify-between gap-3 text-sm">
                   <span>{exposure.name}</span>
                   <span className="text-muted">
                     {usd(exposure.value)} · {pct(exposure.weight)}
@@ -103,7 +103,7 @@ export function Exposure() {
         />
         <div className="space-y-1" data-testid="named-company-exposure">
           {filtered.map((e) => (
-            <ExposureRow key={e.ticker} e={e} />
+            <ExposureRow key={`named:${e.ticker}`} e={e} />
           ))}
           {filtered.length === 0 && (
             <div className="text-muted text-sm">No matches.</div>

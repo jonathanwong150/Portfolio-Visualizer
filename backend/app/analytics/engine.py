@@ -31,7 +31,6 @@ from app.providers.base import BrokerAdapter, ETFHoldingsProvider, MarketDataPro
 
 RISK_FREE_RATE = 0.04  # annual, for Sharpe
 TRADING_DAYS = 252
-_WEIGHT_TOLERANCE = 1e-9
 _UNRESOLVED_PREFIX = "UNRESOLVED:"
 
 
@@ -110,16 +109,19 @@ class PortfolioAnalytics:
         non-finite weights, or total weight materially above 100%, make the
         fund's entire position unresolved.
         """
-        leaves: dict[str, ExposureLeaf] = {}
+        # The boolean tag is part of the identity: a real security is allowed
+        # to have the same ticker text as the unresolved display namespace.
+        leaves: dict[tuple[bool, str], ExposureLeaf] = {}
 
         def leaf(
             ticker: str, *, name: str | None = None, is_unresolved: bool = False
         ) -> ExposureLeaf:
-            if ticker not in leaves:
-                leaves[ticker] = ExposureLeaf(
+            identity = (is_unresolved, ticker)
+            if identity not in leaves:
+                leaves[identity] = ExposureLeaf(
                     ticker=ticker, name=name, is_unresolved=is_unresolved
                 )
-            return leaves[ticker]
+            return leaves[identity]
 
         def add_unresolved(fund_ticker: str, value: float) -> None:
             lf = leaf(
@@ -135,11 +137,16 @@ class PortfolioAnalytics:
             if self.etf.is_etf(ticker):
                 constituents = self.etf.get_constituents(ticker)
                 weights = [c.weight for c in constituents]
-                covered = sum(weights)
                 if (
-                    any(not math.isfinite(weight) or weight < 0 for weight in weights)
-                    or covered > 1.0 + _WEIGHT_TOLERANCE
+                    any(
+                        not math.isfinite(weight) or weight < 0 or weight > 1
+                        for weight in weights
+                    )
                 ):
+                    add_unresolved(ticker, pos.value)
+                    continue
+                covered = math.fsum(weights)
+                if covered > 1:
                     add_unresolved(ticker, pos.value)
                     continue
                 for c in constituents:
@@ -147,7 +154,7 @@ class PortfolioAnalytics:
                     lf = leaf(c.ticker)
                     lf.via_etf_value += v
                     lf.source_etfs.add(ticker)
-                residual = max(0.0, 1.0 - covered)
+                residual = 1.0 - covered
                 if residual > 0:
                     add_unresolved(ticker, pos.value * residual)
             else:

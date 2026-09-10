@@ -76,9 +76,12 @@ export function Dashboard() {
 
         {/* Top true exposures */}
         <Card title="Top Named Company Exposures (look-through)">
-          <ul className="space-y-2">
-            {top.map((e, i) => (
-              <li key={e.ticker} className="flex items-center gap-3">
+          {top.length === 0 ? (
+            <p className="text-sm text-muted">No named company exposure yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {top.map((e, i) => (
+              <li key={`${e.is_unresolved ? "unresolved" : "named"}:${e.ticker}`} className="flex items-center gap-3">
                 <span
                   className="w-2.5 h-2.5 rounded-full"
                   style={{ background: CHART_COLORS[i % CHART_COLORS.length] }}
@@ -87,8 +90,9 @@ export function Dashboard() {
                 <span className="flex-1 text-muted text-sm truncate">{e.name}</span>
                 <span className="font-semibold">{pct(e.weight)}</span>
               </li>
-            ))}
-          </ul>
+              ))}
+            </ul>
+          )}
           {unresolvedValue > 0 && (
             <div className="mt-4 pt-3 border-t border-white/10 text-sm">
               <div className="flex justify-between gap-3 font-medium">
