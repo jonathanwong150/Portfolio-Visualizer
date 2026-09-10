@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from app.config import Settings
 from app.db.tables import AccountRow, AccountSnapshotRow, HoldingRow
 from app.models import AccountType
 from app.services import market_cache, market_refresh
@@ -18,6 +19,16 @@ OVERVIEW = json.loads((FIXTURES / "overview_nbis.json").read_text())
 PROFILE = json.loads((FIXTURES / "etf_profile_vt.json").read_text())
 DAILY = json.loads((FIXTURES / "daily_nvda.json").read_text())
 THROTTLED = {"Information": "Please consider spreading out your free API requests"}
+
+
+@pytest.fixture(autouse=True)
+def configured_market_data(monkeypatch):
+    """HTTP-stubbed refresh tests must not depend on a developer's environment."""
+    monkeypatch.setattr(
+        Settings,
+        "alphavantage_configured",
+        property(lambda self: True),
+    )
 
 
 class FakeApi:

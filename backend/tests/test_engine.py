@@ -32,17 +32,20 @@ class _FixedMarket(MarketDataProvider):
     def get_security(self, ticker: str) -> Security | None:
         if ticker not in self._prices:
             return None
+        unresolved = ticker.startswith("UNRESOLVED:")
         return Security(
             ticker=ticker,
             name=ticker,
             type=SecurityType.stock,
             sector="Technology",
             geography="US",
-            pe=20,
-            pb=4,
-            roe=0.2,
-            momentum=1.1,
-            beta=1.0,
+            # Synthetic unresolved metadata points opposite the named holding,
+            # so its accidental inclusion would visibly change every score.
+            pe=50 if unresolved else 20,
+            pb=15 if unresolved else 4,
+            roe=0 if unresolved else 0.2,
+            momentum=0.5 if unresolved else 1.1,
+            beta=0 if unresolved else 1.0,
         )
 
     def get_price_history(self, ticker: str) -> list[float]:
@@ -288,10 +291,11 @@ def test_unresolved_exposure_reconciles_in_sector_unknown_and_is_not_factor_scor
     geographies = {slice_.label: slice_ for slice_ in eng.geography_breakdown()}
     assert geographies["US"].value == pytest.approx(300)
     assert geographies["Unknown"].value == pytest.approx(700)
-    assert all(
-        tilt.high_weight + tilt.low_weight == pytest.approx(1)
-        for tilt in eng.factor_tilts()
-    )
+    tilts = {tilt.factor: tilt for tilt in eng.factor_tilts()}
+    assert tilts["style"].score == pytest.approx(-0.15)
+    assert tilts["style"].low_weight == pytest.approx(1)
+    assert tilts["momentum"].score == pytest.approx(0.2)
+    assert tilts["momentum"].high_weight == pytest.approx(1)
 
 
 def test_lookthrough_totals_still_reconcile_to_net_worth():
