@@ -52,13 +52,25 @@ export default function App() {
       </header>
 
       <main>
-        {tab === "dashboard" && <Dashboard />}
+        {tab === "dashboard" && (
+          <Dashboard
+            onConnect={() => setTab("accounts")}
+            onImport={() => setTab("import")}
+          />
+        )}
         {tab === "exposure" && <Exposure />}
         {tab === "overlap" && <Overlap />}
         {tab === "factors" && <Factors />}
         {tab === "risk" && <Risk />}
-        {tab === "accounts" && <Accounts />}
-        {tab === "import" && <Import />}
+        {tab === "accounts" && (
+          <Accounts
+            onImport={() => setTab("import")}
+            onViewPortfolio={() => setTab("dashboard")}
+          />
+        )}
+        {tab === "import" && (
+          <Import onViewPortfolio={() => setTab("dashboard")} />
+        )}
       </main>
 
       {/* Mobile bottom nav (app-like) */}

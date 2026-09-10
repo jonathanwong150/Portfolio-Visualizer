@@ -37,7 +37,7 @@ from app.providers.db_broker import (
     latest_account_snapshot_times,
     snapshot_history,
 )
-from app.providers.factory import get_market_data
+from app.providers.factory import get_market_data, get_portfolio_data_status
 from app.services.export import exposure_csv, holdings_csv
 from app.services import market_refresh
 from app.services.import_csv import UnknownFormat, parse_csv
@@ -84,8 +84,11 @@ def health() -> dict:
 @app.get("/portfolio/summary", response_model=PortfolioSummary)
 def portfolio_summary(
     analytics: PortfolioAnalytics = Depends(get_analytics),
+    db: Session = Depends(get_db),
 ) -> PortfolioSummary:
-    return analytics.summary()
+    return analytics.summary().model_copy(
+        update={"data_status": get_portfolio_data_status(db)}
+    )
 
 
 @app.get("/portfolio/history", response_model=NetWorthHistory)

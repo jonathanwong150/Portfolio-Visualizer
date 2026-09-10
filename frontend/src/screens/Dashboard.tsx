@@ -11,7 +11,12 @@ import { Card, Stat } from "../components/Card";
 import { NetWorthChart } from "../components/NetWorthChart";
 import { CHART_COLORS, pct, usd } from "../format";
 
-export function Dashboard() {
+interface DashboardProps {
+  onConnect?: () => void;
+  onImport?: () => void;
+}
+
+export function Dashboard({ onConnect, onImport }: DashboardProps) {
   const summary = useQuery({ queryKey: ["summary"], queryFn: api.summary });
   const companies = useQuery({ queryKey: ["companies"], queryFn: api.companies });
   const risk = useQuery({ queryKey: ["risk"], queryFn: api.risk });
@@ -33,6 +38,14 @@ export function Dashboard() {
 
   return (
     <div className="space-y-5">
+      {s.data_status !== "stored" && (
+        <PortfolioIntro
+          isDemo={s.data_status === "demo"}
+          onConnect={onConnect}
+          onImport={onImport}
+        />
+      )}
+
       {/* Top stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
@@ -113,6 +126,54 @@ export function Dashboard() {
           <DownloadLink href={exportUrls.exposure} label="Exposure CSV" />
         </div>
       </Card>
+    </div>
+  );
+}
+
+function PortfolioIntro({
+  isDemo,
+  onConnect,
+  onImport,
+}: {
+  isDemo: boolean;
+  onConnect?: () => void;
+  onImport?: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-accent/30 bg-accentSoft px-5 py-5 md:flex md:items-center md:justify-between md:gap-6">
+      <div>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold">
+            {isDemo ? "Example portfolio" : "Add your portfolio"}
+          </h2>
+          {isDemo && (
+            <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-semibold text-accent">
+              Demo data
+            </span>
+          )}
+        </div>
+        <p className="mt-1 max-w-xl text-sm text-muted">
+          {isDemo
+            ? "These sample holdings show what consolidated look-through analysis looks like. Add your accounts to see your own portfolio."
+            : "Connect a supported brokerage or import a CSV to build your consolidated portfolio."}
+        </p>
+      </div>
+      <div className="mt-4 flex shrink-0 flex-wrap gap-3 md:mt-0">
+        <button
+          type="button"
+          onClick={onConnect}
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-black"
+        >
+          Connect account
+        </button>
+        <button
+          type="button"
+          onClick={onImport}
+          className="rounded-lg bg-surface2 px-4 py-2 text-sm font-semibold text-white"
+        >
+          Import CSV
+        </button>
+      </div>
     </div>
   );
 }

@@ -19,7 +19,7 @@ const TYPE_LABELS: Record<AccountType, string> = {
   "401k": "401(k)",
 };
 
-export function Import() {
+export function Import({ onViewPortfolio }: { onViewPortfolio?: () => void }) {
   const queryClient = useQueryClient();
   const [preview, setPreview] = useState<ParsedImport | null>(null);
   const [accounts, setAccounts] = useState<ParsedAccount[]>([]);
@@ -99,7 +99,18 @@ export function Import() {
 
         {busy && <p className="text-muted text-sm mt-3">Working…</p>}
         {error && <p className="text-danger text-sm mt-3">{error}</p>}
-        {done && <p className="text-accent text-sm mt-3">{done}</p>}
+        {done && (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <p className="text-accent text-sm">{done}</p>
+            <button
+              type="button"
+              onClick={onViewPortfolio}
+              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-black"
+            >
+              View portfolio
+            </button>
+          </div>
+        )}
       </Card>
 
       {preview && <Preview preview={preview} accounts={accounts} onType={setAccountType} onCommit={commit} busy={busy} />}
