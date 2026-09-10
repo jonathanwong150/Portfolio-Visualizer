@@ -24,7 +24,7 @@ def test_holdings_export_body_starts_with_the_header_row(client):
 def test_exposure_export_body_starts_with_the_header_row(client):
     body = client.get("/export/exposure.csv").text
     first = body.splitlines()[0]
-    assert first == "ticker,name,value,weight,direct_value,via_etf_value,source_etfs"
+    assert first == "ticker,name,value,weight,direct_value,via_etf_value,source_etfs,is_unresolved"
 
 
 def test_exports_carry_the_mock_portfolio_rows(client):

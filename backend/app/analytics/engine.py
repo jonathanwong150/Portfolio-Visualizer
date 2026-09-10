@@ -12,6 +12,7 @@ ETF holdings) and computes:
 """
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from dataclasses import dataclass, field
 
@@ -30,6 +31,8 @@ from app.providers.base import BrokerAdapter, ETFHoldingsProvider, MarketDataPro
 
 RISK_FREE_RATE = 0.04  # annual, for Sharpe
 TRADING_DAYS = 252
+_WEIGHT_TOLERANCE = 1e-9
+_UNRESOLVED_PREFIX = "UNRESOLVED:"
 
 
 @dataclass
@@ -41,9 +44,11 @@ class ValuedPosition:
 
 @dataclass
 class ExposureLeaf:
-    """Accumulator for a single underlying company's true exposure."""
+    """Accumulator for a named company or one fund's unresolved remainder."""
 
     ticker: str
+    name: str | None = None
+    is_unresolved: bool = False
     direct_value: float = 0.0
     via_etf_value: float = 0.0
     source_etfs: set[str] = field(default_factory=set)
@@ -96,68 +101,72 @@ class PortfolioAnalytics:
     def company_exposure(self) -> list[CompanyExposure]:
         """Resolve every position down to true per-company exposure.
 
-        ETFs are expanded into ``weight * position_value`` per constituent and
-        netted with direct holdings of the same ticker.
+        Reported constituent weights are used verbatim and netted with direct
+        holdings of the same ticker. Each fund's unreported remainder is kept
+        as an explicit unresolved row, so named-company exposure is never
+        inferred from partial data and all rows still reconcile to net worth.
 
-        **Partial constituent data inflates single-name exposure.** Weight the
-        provider doesn't cover is redistributed across the mapped constituents
-        (see below), scaling each by ``1 / covered_weight`` — at the seed's
-        38.9% coverage of SPY, a 6.5% NVDA weight presents as ~16.7%. Totals
-        still reconcile to net worth; the split between names does not. Only a
-        provider returning full constituents makes this exact.
+        Invalid constituent lists are not partially trusted: negative or
+        non-finite weights, or total weight materially above 100%, make the
+        fund's entire position unresolved.
         """
         leaves: dict[str, ExposureLeaf] = {}
 
-        def leaf(ticker: str) -> ExposureLeaf:
+        def leaf(
+            ticker: str, *, name: str | None = None, is_unresolved: bool = False
+        ) -> ExposureLeaf:
             if ticker not in leaves:
-                leaves[ticker] = ExposureLeaf(ticker=ticker)
+                leaves[ticker] = ExposureLeaf(
+                    ticker=ticker, name=name, is_unresolved=is_unresolved
+                )
             return leaves[ticker]
+
+        def add_unresolved(fund_ticker: str, value: float) -> None:
+            lf = leaf(
+                f"{_UNRESOLVED_PREFIX}{fund_ticker}",
+                name=f"Unresolved holdings in {fund_ticker}",
+                is_unresolved=True,
+            )
+            lf.via_etf_value += value
+            lf.source_etfs.add(fund_ticker)
 
         for pos in self.valued_positions:
             ticker = pos.holding.ticker
             if self.etf.is_etf(ticker):
                 constituents = self.etf.get_constituents(ticker)
-                covered = 0.0
+                weights = [c.weight for c in constituents]
+                covered = sum(weights)
+                if (
+                    any(not math.isfinite(weight) or weight < 0 for weight in weights)
+                    or covered > 1.0 + _WEIGHT_TOLERANCE
+                ):
+                    add_unresolved(ticker, pos.value)
+                    continue
                 for c in constituents:
                     v = pos.value * c.weight
                     lf = leaf(c.ticker)
                     lf.via_etf_value += v
                     lf.source_etfs.add(ticker)
-                    covered += c.weight
                 residual = max(0.0, 1.0 - covered)
-                if residual > 1e-9:
-                    # Unmapped remainder is spread proportionally across the
-                    # mapped constituents so breakdowns don't collapse into a
-                    # large "Unknown" bucket. This assumes the ETF's unmapped
-                    # tail resembles its mapped head — a reasonable prototype
-                    # approximation; a real ETFHoldingsProvider returns full
-                    # constituents and makes this branch a no-op.
-                    if covered > 1e-9:
-                        scale = residual / covered
-                        for c in constituents:
-                            lf = leaf(c.ticker)
-                            lf.via_etf_value += pos.value * c.weight * scale
-                            lf.source_etfs.add(ticker)
-                    else:
-                        lf = leaf(ticker)
-                        lf.via_etf_value += pos.value * residual
-                        lf.source_etfs.add(ticker)
+                if residual > 0:
+                    add_unresolved(ticker, pos.value * residual)
             else:
                 leaf(ticker).direct_value += pos.value
 
         total = self.total_value or 1.0
         out: list[CompanyExposure] = []
         for lf in leaves.values():
-            sec = self._security(lf.ticker)
+            sec = None if lf.is_unresolved else self._security(lf.ticker)
             out.append(
                 CompanyExposure(
                     ticker=lf.ticker,
-                    name=(sec.name if sec else lf.ticker),
+                    name=lf.name or (sec.name if sec else lf.ticker),
                     value=lf.total,
                     weight=lf.total / total,
                     direct_value=lf.direct_value,
                     via_etf_value=lf.via_etf_value,
                     source_etfs=sorted(lf.source_etfs),
+                    is_unresolved=lf.is_unresolved,
                 )
             )
         out.sort(key=lambda e: e.value, reverse=True)
@@ -200,7 +209,7 @@ class PortfolioAnalytics:
         """Breakdown computed on *look-through* exposure."""
         buckets: dict[str, float] = defaultdict(float)
         for exp in self.company_exposure():
-            sec = self._security(exp.ticker)
+            sec = None if exp.is_unresolved else self._security(exp.ticker)
             label = getattr(sec, attr, None) if sec else None
             buckets[label or "Unknown"] += exp.value
         total = self.total_value or 1.0
@@ -248,6 +257,8 @@ class PortfolioAnalytics:
             high_w = 0.0
             low_w = 0.0
             for exp in exposures:
+                if exp.is_unresolved:
+                    continue
                 sec = self._security(exp.ticker)
                 if sec is None:
                     continue

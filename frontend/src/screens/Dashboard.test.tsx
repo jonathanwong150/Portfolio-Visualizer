@@ -62,6 +62,7 @@ const COMPANIES: CompanyExposure[] = [
     direct_value: 5_000,
     via_etf_value: 16_300,
     source_etfs: ["VOO", "QQQ"],
+    is_unresolved: false,
   },
   {
     ticker: "AAPL",
@@ -71,6 +72,17 @@ const COMPANIES: CompanyExposure[] = [
     direct_value: 0,
     via_etf_value: 14_200,
     source_etfs: ["VOO"],
+    is_unresolved: false,
+  },
+  {
+    ticker: "UNRESOLVED:VOO",
+    name: "Unresolved holdings in VOO",
+    value: 71_000,
+    weight: 0.5,
+    direct_value: 0,
+    via_etf_value: 71_000,
+    source_etfs: ["VOO"],
+    is_unresolved: true,
   },
 ];
 
@@ -126,6 +138,17 @@ describe("Dashboard", () => {
     expect(await screen.findByText("Failed to load summary.")).toBeInTheDocument();
   });
 
+  it("does not present missing exposure data as an empty ranking", async () => {
+    vi.mocked(api.summary).mockResolvedValue(SUMMARY);
+    vi.mocked(api.companies).mockRejectedValue(new Error("/exposure/companies -> 500"));
+    vi.mocked(api.risk).mockResolvedValue(RISK);
+
+    renderDashboard();
+
+    expect(await screen.findByText("Failed to load exposure.")).toBeInTheDocument();
+    expect(screen.queryByText("Top Named Company Exposures (look-through)")).not.toBeInTheDocument();
+  });
+
   it("renders net worth and unrealized gain formatted as currency", async () => {
     resolveAll();
     renderDashboard();
@@ -157,6 +180,9 @@ describe("Dashboard", () => {
     expect(screen.getByText("15.0%")).toBeInTheDocument();
     expect(screen.getByText("AAPL")).toBeInTheDocument();
     expect(screen.getByText("10.0%")).toBeInTheDocument();
+    expect(screen.queryByText("UNRESOLVED:VOO")).not.toBeInTheDocument();
+    expect(screen.getByText("50.0% unresolved")).toBeInTheDocument();
+    expect(screen.getByText("$71,000 not attributed to named companies")).toBeInTheDocument();
   });
 
   it("renders an em dash for beta when the risk query has no data", async () => {
@@ -226,7 +252,7 @@ describe("Dashboard", () => {
 
     renderDashboard();
 
-    expect(await screen.findByText("Top True Exposures (look-through)")).toBeInTheDocument();
+    expect(await screen.findByText("Top Named Company Exposures (look-through)")).toBeInTheDocument();
     // Net worth and total invested both read $0 on an empty portfolio.
     expect(screen.getAllByText("$0")).toHaveLength(2);
     expect(screen.queryByText("NVDA")).not.toBeInTheDocument();

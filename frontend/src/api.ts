@@ -62,6 +62,7 @@ export interface CompanyExposure {
   direct_value: number;
   via_etf_value: number;
   source_etfs: string[];
+  is_unresolved: boolean;
 }
 
 export interface RiskMetrics {

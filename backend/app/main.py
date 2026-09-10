@@ -252,7 +252,7 @@ def export_holdings(analytics: PortfolioAnalytics = Depends(get_analytics)) -> R
 
 @app.get("/export/exposure.csv")
 def export_exposure(analytics: PortfolioAnalytics = Depends(get_analytics)) -> Response:
-    """True per-company exposure, post look-through, as CSV."""
+    """Named and unresolved exposure, post look-through, as CSV."""
     return _csv_response(exposure_csv(analytics.company_exposure()), "exposure.csv")
 
 

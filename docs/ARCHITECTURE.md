@@ -42,13 +42,22 @@ curated **seed dataset** (`backend/app/data/etf_seed.json`) of popular ETFs with
 their top holdings + weights. This keeps the app fully functional while making
 the one component most likely to need paid data a drop-in swap.
 
+Partial data remains partial: reported constituent weights are used verbatim,
+and each fund's uncovered value is returned as an explicit
+`UNRESOLVED:<fund>` exposure. It remains in portfolio, sector/geography, and
+export totals, but is excluded from named-company rankings and factor scores.
+An ETF with no constituents is 100% unresolved. A list with negative or
+non-finite weights, or a total materially above 100%, is rejected as a whole so
+bad source data cannot be normalized or double-counted.
+
 ## Analytics Engine
 
 Located in `backend/app/analytics/`.
 
 1. **Look-through resolver** — expands each ETF position into
-   `(underlying_ticker, weight × position_value)`, then nets duplicates across
-   ETFs and direct holdings → **true per-company exposure**.
+   `(underlying_ticker, reported_weight × position_value)`, then nets duplicates
+   across ETFs and direct holdings. Uncovered value is explicitly unresolved,
+   preserving both honest **named-company exposure** and total reconciliation.
 2. **Overlap analysis** — pairwise shared-weight between ETFs.
 3. **Breakdowns** — sector / geography / market-cap / asset class (post look-through).
 4. **Factor analysis** — growth vs value, size, momentum, quality (rule-based
@@ -154,8 +163,9 @@ tier allows **25 requests/day** against a ~20-ticker portfolio wanting ~40, so
 fundamentals — and a truncated run leaves the most useful partial state.
 
 `GET /market-data/coverage` reports how much of the portfolio has real data, and
-per-ETF constituent depth: a look-through percentage is only as trustworthy as
-the fraction of the fund its constituent list covers.
+per-ETF constituent depth. The look-through response independently carries the
+same uncertainty as unresolved value, so consumers cannot mistake a partial
+constituent list for full named-company coverage.
 
 ### Net-worth history (Phase 4)
 
@@ -214,7 +224,7 @@ the mobile app.
 | GET    | `/accounts`                 | Synced accounts, valued at current prices |
 | GET    | `/portfolio/summary`        | Net worth, invested, allocation      |
 | GET    | `/portfolio/history`        | Net worth per snapshot, each at its own date's prices |
-| GET    | `/exposure/companies`       | True company exposure (look-through) |
+| GET    | `/exposure/companies`       | Named + unresolved exposure (look-through) |
 | GET    | `/exposure/sectors`         | Sector breakdown                     |
 | GET    | `/exposure/factors`         | Factor tilts                         |
 | GET    | `/exposure/geography`       | Geographic breakdown                 |
@@ -231,8 +241,8 @@ the mobile app.
 
 ## Frontend Screens
 
-- **Dashboard** — net worth, total invested, allocation donut, top-10 true exposures.
-- **Exposure** — treemap + searchable list ("you own X% NVIDIA across N funds").
+- **Dashboard** — net worth, total invested, allocation donut, top-10 named exposures plus unresolved ETF value.
+- **Exposure** — sector chart, searchable named-company list, and per-fund unresolved disclosure.
 - **Overlap** — ETF overlap heatmap.
 - **Sectors / Factors** — toggleable bar/pie/treemap; factor tilt bars.
 - **Risk** — beta/vol/Sharpe/drawdown cards + correlation heatmap.

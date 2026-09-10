@@ -124,6 +124,16 @@ EXPOSURES = [
         via_etf_value=14_200.0,
         source_etfs=[],
     ),
+    CompanyExposure(
+        ticker="UNRESOLVED:VOO",
+        name="Unresolved holdings in VOO",
+        value=7_100.0,
+        weight=0.05,
+        direct_value=0.0,
+        via_etf_value=7_100.0,
+        source_etfs=["VOO"],
+        is_unresolved=True,
+    ),
 ]
 
 
@@ -137,6 +147,7 @@ def test_exposure_csv_header_is_stable():
         "direct_value",
         "via_etf_value",
         "source_etfs",
+        "is_unresolved",
     ]
 
 
@@ -146,7 +157,12 @@ def test_exposure_csv_joins_source_etfs_into_one_field():
     assert nvda[0] == "NVDA"
     assert nvda[6] == "VOO QQQ"
     # Space-separated, so a spreadsheet doesn't split the field.
-    assert len(nvda) == 7
+    assert len(nvda) == 8
+
+
+def test_exposure_csv_marks_unresolved_rows_explicitly():
+    row = next(r for r in _rows(exposure_csv(EXPOSURES))[1:] if r[0] == "UNRESOLVED:VOO")
+    assert row[7] == "True"
 
 
 def test_exposure_csv_leaves_source_etfs_blank_for_a_direct_only_holding():
@@ -156,7 +172,7 @@ def test_exposure_csv_leaves_source_etfs_blank_for_a_direct_only_holding():
 
 def test_exposure_csv_preserves_the_order_it_was_given():
     rows = _rows(exposure_csv(EXPOSURES))[1:]
-    assert [r[0] for r in rows] == ["NVDA", "AAPL"]
+    assert [r[0] for r in rows] == ["NVDA", "AAPL", "UNRESOLVED:VOO"]
 
 
 def test_exposure_csv_emits_a_header_for_an_empty_portfolio():

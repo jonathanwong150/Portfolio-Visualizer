@@ -9,7 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { api } from "../api";
+import { api, type CompanyExposure } from "../api";
 import { Card } from "../components/Card";
 import { CHART_COLORS, pct, usd } from "../format";
 
@@ -19,9 +19,16 @@ export function Exposure() {
   const [search, setSearch] = useState("");
 
   if (companies.isLoading) return <div className="text-muted">Loading…</div>;
+  if (companies.error) {
+    return <div className="text-danger">Failed to load company exposure.</div>;
+  }
 
   const all = companies.data ?? [];
-  const filtered = all.filter(
+  const unresolved = all.filter((exposure) => exposure.is_unresolved);
+  const unresolvedValue = unresolved.reduce((total, exposure) => total + exposure.value, 0);
+  const unresolvedWeight = unresolved.reduce((total, exposure) => total + exposure.weight, 0);
+  const named = all.filter((exposure) => !exposure.is_unresolved);
+  const filtered = named.filter(
     (e) =>
       e.ticker.toLowerCase().includes(search.toLowerCase()) ||
       e.name.toLowerCase().includes(search.toLowerCase())
@@ -31,27 +38,60 @@ export function Exposure() {
     <div className="space-y-5">
       {/* Sector breakdown */}
       <Card title="Sector Exposure (look-through)">
-        <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={sectors.data ?? []} layout="vertical" margin={{ left: 40 }}>
-            <XAxis type="number" hide />
-            <YAxis
-              type="category"
-              dataKey="label"
-              width={130}
-              tick={{ fill: "#8a94a6", fontSize: 12 }}
-            />
-            <Tooltip
-              formatter={(v: number) => usd(v)}
-              contentStyle={{ background: "#1c232c", border: "none", borderRadius: 12 }}
-            />
-            <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-              {(sectors.data ?? []).map((_, i) => (
-                <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+        {sectors.isLoading ? (
+          <p className="text-muted text-sm">Loading…</p>
+        ) : sectors.error ? (
+          <p className="text-danger text-sm">Failed to load sector exposure.</p>
+        ) : (sectors.data?.length ?? 0) === 0 ? (
+          <p className="text-muted text-sm">No sector exposure.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={sectors.data} layout="vertical" margin={{ left: 40 }}>
+              <XAxis type="number" hide />
+              <YAxis
+                type="category"
+                dataKey="label"
+                width={130}
+                tick={{ fill: "#8a94a6", fontSize: 12 }}
+              />
+              <Tooltip
+                formatter={(v: number) => usd(v)}
+                contentStyle={{ background: "#1c232c", border: "none", borderRadius: 12 }}
+              />
+              <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                {sectors.data!.map((_, i) => (
+                  <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </Card>
+
+      {unresolvedValue > 0 && (
+        <Card title="Unresolved ETF Exposure">
+          <div data-testid="unresolved-exposure">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="text-lg font-semibold">{pct(unresolvedWeight)} unresolved</span>
+              <span className="font-semibold">{usd(unresolvedValue)}</span>
+            </div>
+            <p className="text-sm text-muted mt-1">
+              Constituent data does not identify this part of the portfolio, so it is
+              excluded from named company rankings.
+            </p>
+            <div className="mt-3 space-y-2">
+              {unresolved.map((exposure) => (
+                <div key={exposure.ticker} className="flex justify-between gap-3 text-sm">
+                  <span>{exposure.name}</span>
+                  <span className="text-muted">
+                    {usd(exposure.value)} · {pct(exposure.weight)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Searchable true-exposure list */}
       <Card title="True Company Exposure">
@@ -61,7 +101,7 @@ export function Exposure() {
           placeholder="Search e.g. NVDA…"
           className="w-full mb-4 bg-surface2 rounded-xl px-4 py-2 text-sm outline-none placeholder:text-muted"
         />
-        <div className="space-y-1">
+        <div className="space-y-1" data-testid="named-company-exposure">
           {filtered.map((e) => (
             <ExposureRow key={e.ticker} e={e} />
           ))}
@@ -77,15 +117,7 @@ export function Exposure() {
 function ExposureRow({
   e,
 }: {
-  e: {
-    ticker: string;
-    name: string;
-    value: number;
-    weight: number;
-    direct_value: number;
-    via_etf_value: number;
-    source_etfs: string[];
-  };
+  e: CompanyExposure;
 }) {
   const directPct = e.value > 0 ? e.direct_value / e.value : 0;
   return (

@@ -21,9 +21,14 @@ export function Dashboard() {
     return <div className="text-muted">Loading…</div>;
   }
   if (summary.error) return <div className="text-danger">Failed to load summary.</div>;
+  if (companies.error) return <div className="text-danger">Failed to load exposure.</div>;
 
   const s = summary.data!;
-  const top = (companies.data ?? []).slice(0, 10);
+  const exposures = companies.data ?? [];
+  const unresolved = exposures.filter((exposure) => exposure.is_unresolved);
+  const unresolvedValue = unresolved.reduce((total, exposure) => total + exposure.value, 0);
+  const unresolvedWeight = unresolved.reduce((total, exposure) => total + exposure.weight, 0);
+  const top = exposures.filter((exposure) => !exposure.is_unresolved).slice(0, 10);
   const gain = s.net_worth - s.total_invested;
 
   return (
@@ -70,7 +75,7 @@ export function Dashboard() {
         </Card>
 
         {/* Top true exposures */}
-        <Card title="Top True Exposures (look-through)">
+        <Card title="Top Named Company Exposures (look-through)">
           <ul className="space-y-2">
             {top.map((e, i) => (
               <li key={e.ticker} className="flex items-center gap-3">
@@ -84,6 +89,17 @@ export function Dashboard() {
               </li>
             ))}
           </ul>
+          {unresolvedValue > 0 && (
+            <div className="mt-4 pt-3 border-t border-white/10 text-sm">
+              <div className="flex justify-between gap-3 font-medium">
+                <span>{pct(unresolvedWeight)} unresolved</span>
+                <span>{usd(unresolvedValue)}</span>
+              </div>
+              <p className="text-xs text-muted mt-1">
+                {usd(unresolvedValue)} not attributed to named companies
+              </p>
+            </div>
+          )}
         </Card>
       </div>
 

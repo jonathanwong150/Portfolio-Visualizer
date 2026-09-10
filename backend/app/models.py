@@ -68,6 +68,8 @@ class CompanyExposure(BaseModel):
     direct_value: float   # held directly
     via_etf_value: float  # held through ETFs
     source_etfs: list[str] = Field(default_factory=list)
+    # True for the portion of an ETF that its constituent source did not resolve.
+    is_unresolved: bool = False
 
 
 class BreakdownSlice(BaseModel):
