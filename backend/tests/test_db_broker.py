@@ -3,9 +3,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from app.db.tables import AccountRow, HoldingRow
+from app.db.tables import AccountRow, AccountSnapshotRow, HoldingRow
 from app.models import AccountType
-from app.providers.db_broker import DbBroker
+from app.providers.db_broker import (
+    DbBroker,
+    current_holding_rows,
+    latest_account_snapshot_times,
+)
 
 
 def _account(session, type_: AccountType, name: str = "Test Account") -> AccountRow:
@@ -58,3 +62,42 @@ def test_account_type_round_trips_through_the_value_string(session):
     assert by_ticker["VTI"].account_type is AccountType.roth
     assert by_ticker["VTI"].cost_basis == 9000
     assert by_ticker["VOO"].cost_basis is None
+
+
+def test_current_holdings_use_each_accounts_latest_snapshot(session):
+    taxable = _account(session, AccountType.brokerage, name="Taxable")
+    roth = _account(session, AccountType.roth, name="Roth")
+    jan = datetime(2024, 1, 1)
+    feb = datetime(2024, 2, 1)
+    march = datetime(2024, 3, 1)
+    session.add_all(
+        [
+            AccountSnapshotRow(account_id=taxable.id, snapshot_at=jan),
+            HoldingRow(account_id=taxable.id, ticker="NVDA", shares=10, snapshot_at=jan),
+            AccountSnapshotRow(account_id=roth.id, snapshot_at=feb),
+            HoldingRow(account_id=roth.id, ticker="VTI", shares=5, snapshot_at=feb),
+            AccountSnapshotRow(account_id=taxable.id, snapshot_at=march),
+            HoldingRow(account_id=taxable.id, ticker="AAPL", shares=4, snapshot_at=march),
+        ]
+    )
+    session.commit()
+
+    assert latest_account_snapshot_times(session) == {taxable.id: march, roth.id: feb}
+    assert {row.ticker for row in current_holding_rows(session)} == {"AAPL", "VTI"}
+    assert {holding.ticker for holding in DbBroker(session).get_holdings()} == {"AAPL", "VTI"}
+
+
+def test_legacy_unmarked_holdings_still_use_each_accounts_latest_snapshot(session):
+    taxable = _account(session, AccountType.brokerage, name="Taxable")
+    roth = _account(session, AccountType.roth, name="Roth")
+    jan = datetime(2024, 1, 1)
+    feb = datetime(2024, 2, 1)
+    session.add_all(
+        [
+            HoldingRow(account_id=taxable.id, ticker="NVDA", shares=10, snapshot_at=jan),
+            HoldingRow(account_id=roth.id, ticker="VTI", shares=5, snapshot_at=feb),
+        ]
+    )
+    session.commit()
+
+    assert {holding.ticker for holding in DbBroker(session).get_holdings()} == {"NVDA", "VTI"}

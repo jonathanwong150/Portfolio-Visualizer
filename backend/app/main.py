@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.analytics.engine import PortfolioAnalytics
@@ -32,13 +32,22 @@ from app.models import (
     RiskMetrics,
     SyncResult,
 )
-from app.providers.db_broker import snapshot_history
+from app.providers.db_broker import (
+    current_holding_rows,
+    latest_account_snapshot_times,
+    snapshot_history,
+)
 from app.providers.factory import get_market_data
 from app.services.export import exposure_csv, holdings_csv
 from app.services import market_refresh
 from app.services.import_csv import UnknownFormat, parse_csv
 from app.services.market_refresh import Coverage, RefreshResult
-from app.services.snapshot import SnapshotAccount, SnapshotHolding, write_snapshot
+from app.services.snapshot import (
+    InvalidSnapshot,
+    SnapshotAccount,
+    SnapshotHolding,
+    write_snapshot,
+)
 from app.services.sync import PlaidNotConfigured, sync_holdings
 
 settings = get_settings()
@@ -217,7 +226,10 @@ def import_commit(
         )
         for holding in payload.holdings
     ]
-    return write_snapshot(db, accounts, holdings)
+    try:
+        return write_snapshot(db, accounts, holdings)
+    except InvalidSnapshot as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # ---- CSV export (Phase 4) ----------------------------------------------------
@@ -278,6 +290,10 @@ def plaid_sync(db: Session = Depends(get_db)) -> SyncResult:
         return sync_holdings(db)
     except PlaidNotConfigured as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except InvalidSnapshot as exc:
+        raise HTTPException(
+            status_code=502, detail="Broker holdings did not match the supplied accounts."
+        ) from exc
 
 
 @app.get("/accounts", response_model=AccountsResponse)
@@ -285,26 +301,15 @@ def accounts(db: Session = Depends(get_db)) -> AccountsResponse:
     """Synced accounts with their holdings valued at current prices."""
     market = get_market_data(session=db)
     rows = db.execute(select(AccountRow)).scalars().all()
+    snapshot_times = latest_account_snapshot_times(db)
+    holdings_by_account: dict[int, list[HoldingRow]] = {}
+    for holding in current_holding_rows(db):
+        holdings_by_account.setdefault(holding.account_id, []).append(holding)
 
     summaries: list[AccountSummary] = []
     for account in rows:
-        last_synced_at = db.execute(
-            select(func.max(HoldingRow.snapshot_at)).where(
-                HoldingRow.account_id == account.id
-            )
-        ).scalar_one_or_none()
-        holdings = (
-            db.execute(
-                select(HoldingRow).where(
-                    HoldingRow.account_id == account.id,
-                    HoldingRow.snapshot_at == last_synced_at,
-                )
-            )
-            .scalars()
-            .all()
-            if last_synced_at is not None
-            else []
-        )
+        last_synced_at = snapshot_times.get(account.id)
+        holdings = holdings_by_account.get(account.id, [])
         summaries.append(
             AccountSummary(
                 id=account.id,

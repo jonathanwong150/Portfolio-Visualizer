@@ -16,8 +16,12 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.tables import AccountRow, HoldingRow, SecurityRow
+from app.db.tables import AccountRow, AccountSnapshotRow, HoldingRow, SecurityRow
 from app.models import AccountType, SecurityType, SyncResult
+
+
+class InvalidSnapshot(ValueError):
+    """A source supplied holdings that cannot be assigned to its accounts."""
 
 
 @dataclass
@@ -51,6 +55,9 @@ def write_snapshot(
     snapshot_at: datetime | None = None,
 ) -> SyncResult:
     """Upsert accounts, append one holdings snapshot, upsert securities."""
+    account_keys = {account.key for account in accounts}
+    if any(holding.account_key not in account_keys for holding in holdings):
+        raise InvalidSnapshot("Every holding must belong to a supplied account.")
     snapshot_at = snapshot_at or datetime.utcnow()
     account_ids: dict[str, int] = {}
 
@@ -77,11 +84,14 @@ def write_snapshot(
         session.flush()
         account_ids[account.key] = row.id
 
+    # Holding rows cannot represent an observed empty account, so record every
+    # supplied account independently of whether it currently has positions.
+    for account_id in set(account_ids.values()):
+        session.add(AccountSnapshotRow(account_id=account_id, snapshot_at=snapshot_at))
+
     written = 0
     for holding in holdings:
-        account_id = account_ids.get(holding.account_key)
-        if account_id is None:
-            continue
+        account_id = account_ids[holding.account_key]
         session.add(
             HoldingRow(
                 account_id=account_id,

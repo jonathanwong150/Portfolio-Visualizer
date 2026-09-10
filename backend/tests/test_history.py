@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 
 from app.analytics.history import net_worth_series
-from app.db.tables import AccountRow, HoldingRow
+from app.db.tables import AccountRow, AccountSnapshotRow, HoldingRow
 from app.models import AccountType, Holding
 from app.providers.base import MarketDataProvider
 from app.providers.db_broker import snapshot_history
@@ -119,6 +119,43 @@ def test_snapshot_history_reconstructs_account_type_and_cost_basis(session):
     (_, holdings), = snapshot_history(session)
     assert holdings[0].account_type is AccountType._401k
     assert holdings[0].cost_basis == 9000
+
+
+def test_snapshot_history_reconstructs_complete_portfolio_at_each_account_update(session):
+    taxable = _account(session)
+    roth = _account(session, AccountType.roth)
+    jan = datetime(2024, 1, 1)
+    feb = datetime(2024, 2, 1)
+    march = datetime(2024, 3, 1)
+    session.add_all(
+        [
+            AccountSnapshotRow(account_id=taxable.id, snapshot_at=jan),
+            HoldingRow(account_id=taxable.id, ticker="NVDA", shares=10, snapshot_at=jan),
+            AccountSnapshotRow(account_id=roth.id, snapshot_at=feb),
+            HoldingRow(account_id=roth.id, ticker="VTI", shares=5, snapshot_at=feb),
+            AccountSnapshotRow(account_id=taxable.id, snapshot_at=march),
+            HoldingRow(account_id=taxable.id, ticker="AAPL", shares=4, snapshot_at=march),
+        ]
+    )
+    session.commit()
+
+    history = snapshot_history(session)
+
+    assert [at for at, _ in history] == [jan, feb, march]
+    assert [{h.ticker for h in holdings} for _, holdings in history] == [
+        {"NVDA"},
+        {"NVDA", "VTI"},
+        {"AAPL", "VTI"},
+    ]
+
+
+def test_snapshot_history_records_an_empty_account_update(session):
+    account = _account(session)
+    at = datetime(2024, 1, 1)
+    session.add(AccountSnapshotRow(account_id=account.id, snapshot_at=at))
+    session.commit()
+
+    assert snapshot_history(session) == [(at, [])]
 
 
 # ---- net_worth_series ------------------------------------------------------

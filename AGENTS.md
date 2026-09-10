@@ -25,8 +25,8 @@ Full design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — read it rather t
 | `backend/app/services/sync.py` | Plaid → DB sync orchestration (phase 3). |
 | `backend/app/services/export.py` | CSV serialization of holdings and look-through exposure. Pure `-> str`; uses the stdlib `csv` writer so names containing commas are escaped. |
 | `backend/app/services/import_csv.py` | Brokerage CSV → `ParsedImport`. Pure `str -> ParsedImport`. Fidelity/Schwab positions, Robinhood transaction aggregation, canonical template. Columns located by **name**, never index. |
-| `backend/app/services/snapshot.py` | `write_snapshot` — the one write path shared by CSV import and Plaid sync. Accounts upserted on `plaid_account_id` or name; holdings appended. |
-| `backend/app/providers/snapshot_broker.py` | `SnapshotBroker` — latest snapshot, `MockBroker` fallback when nothing is imported. **The default broker.** `PlaidBroker` subclasses it. |
+| `backend/app/services/snapshot.py` | `write_snapshot` — the one write path shared by CSV import and Plaid sync. Accounts upserted on `plaid_account_id` or name; holdings and per-account snapshot markers appended, including empty updates. |
+| `backend/app/providers/snapshot_broker.py` | `SnapshotBroker` — latest snapshot per account, `MockBroker` fallback only before any snapshot exists. **The default broker.** `PlaidBroker` subclasses it. |
 | `backend/app/providers/snapshot_market.py` | Prices recorded by the import beat anything synthesized; metadata and history delegate to the seed. |
 | `backend/app/providers/alphavantage.py` | AV client. Pure `map_*` functions carry the logic; `fetch_*` is HTTP only. |
 | `backend/app/providers/cached_market.py` | `CachedMarketDataProvider` / `CachedETFHoldingsProvider` — read the cache, fall back to seed, **never HTTP**. |
@@ -38,7 +38,7 @@ Full design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — read it rather t
 | `frontend/src/screens/` | One file per screen: `Dashboard`, `Exposure`, `Overlap`, `Factors`, `Risk`, `Accounts`, `Import`. |
 | `frontend/src/components/` | Shared UI — only `Card.tsx` and `Heatmap.tsx` so far. |
 | `frontend/src/api.ts` | Every backend call. Change this when the API contract changes. |
-| `backend/tests/` | pytest, one file per module, fixtures in `conftest.py`, sample broker exports and real Alpha Vantage payloads in `tests/fixtures/`. 210 tests. |
+| `backend/tests/` | pytest, one file per module, fixtures in `conftest.py`, sample broker exports and real Alpha Vantage payloads in `tests/fixtures/`. |
 
 **Provider interfaces are the main design decision** — `BrokerAdapter`, `MarketDataProvider`, `ETFHoldingsProvider`. Data sources are swappable so the analytics engine never knows where holdings came from. Don't call Plaid or yfinance from the engine; go through a provider.
 
@@ -63,7 +63,7 @@ docker-compose up --build          # api :8000, frontend :5173
 
 # Backend
 cd backend
-./.venv/bin/pytest                 # 210 tests, ~1s
+./.venv/bin/pytest                 # full backend suite
 ./.venv/bin/pytest tests/test_engine.py -k lookthrough   # single test
 ./.venv/bin/uvicorn app.main:app --reload
 
@@ -119,5 +119,6 @@ Rendering a component is still not proof a number is right. Charts and analytics
 - **Alpha Vantage's sector vocabulary differs from the seed's**, not just in case: `CONSUMER CYCLICAL` vs `Consumer Discretionary`, `FINANCIAL SERVICES` vs `Financials`, `HEALTHCARE` vs `Health Care`. Unmapped, one sector shows as two rows in the same breakdown. `_SECTOR_ALIASES` in `alphavantage.py` is the fix; extend it when a new sector appears. (2026-09-01)
 - **Every seed price is ~$100–108 regardless of ticker** — `SeedMarketDataProvider` random-walks from a base of 100, so a $1.00 money-market fund gets valued at $106/share and net worth comes out multiples too high. Imported snapshot prices override this (`snapshot_market.py`); a ticker with no imported price still gets a fabricated one. (2026-08-28)
 - **Tests that hit a DB-backed provider must inject the session.** `get_broker`/`get_market_data` take an optional `session`; without it they open `SessionLocal` and read the developer's real `portfolio.db`, so overriding `get_db` alone does not isolate a test. `deps.get_analytics` threads the request session through — keep it that way. (2026-08-28)
+- **Accounts disappear after separate imports if reads use a global snapshot timestamp.** Use `db_broker.current_holding_rows` and `latest_account_snapshot_times` for current-state consumers; include `account_snapshots` markers so empty updates clear holdings and never trigger demo fallback. Legacy holding timestamps remain valid events. (2026-09-08)
 - **Yahoo Finance returns HTTP 429 from this network** on every endpoint, with or without a browser user-agent. Alpha Vantage and Twelve Data work. Don't conclude "no live market data available" from a Yahoo failure. (2026-08-28)
 - **`backend/portfolio.db` is gitignored and local.** Schema changes have no migration tooling yet — deleting the file and letting it recreate is the current answer, which also destroys local data.
