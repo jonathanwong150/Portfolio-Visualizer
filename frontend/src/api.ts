@@ -46,6 +46,8 @@ export interface BreakdownSlice {
 }
 
 export interface PortfolioSummary {
+  // Optional while older backend deployments remain compatible with this client.
+  data_status?: "demo" | "stored" | "empty";
   net_worth: number;
   total_invested: number;
   num_accounts: number;

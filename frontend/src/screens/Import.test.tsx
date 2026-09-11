@@ -5,22 +5,27 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ParsedImport } from "../api";
 import { Import } from "./Import";
 
-vi.mock("../api", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../api")>()),
-  api: {
-    importPreview: vi.fn(),
-    importCommit: vi.fn(),
-  },
-}));
+vi.mock("../api", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../api")>();
+  return {
+    ...original,
+    api: {
+      ...original.api,
+      importPreview: vi.fn(),
+      importCommit: vi.fn(),
+      coverage: vi.fn(),
+    },
+  };
+});
 
 const { api } = await import("../api");
 
-function renderImport() {
+function renderImport(props: React.ComponentProps<typeof Import> = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
-  return render(<Import />, { wrapper });
+  return render(<Import {...props} />, { wrapper });
 }
 
 const PREVIEW: ParsedImport = {
@@ -62,6 +67,14 @@ function choose(file = new File(["ticker,shares\nNVDA,1\n"], "positions.csv")) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(api.coverage).mockResolvedValue({
+    total_tickers: 0,
+    with_prices: 0,
+    with_metadata: 0,
+    missing: [],
+    etfs: [],
+    configured: false,
+  });
 });
 
 describe("Import", () => {
@@ -149,6 +162,23 @@ describe("Import", () => {
     fireEvent.click(await screen.findByRole("button", { name: /import 2 holdings/i }));
 
     expect(await screen.findByText(/imported 2 holdings across 2 accounts/i)).toBeInTheDocument();
+  });
+
+  it("offers a direct return to the portfolio after import", async () => {
+    const onViewPortfolio = vi.fn();
+    vi.mocked(api.importPreview).mockResolvedValue(PREVIEW);
+    vi.mocked(api.importCommit).mockResolvedValue({
+      accounts: 2,
+      holdings: 2,
+      snapshot_at: "2026-08-28T12:00:00",
+    });
+    renderImport({ onViewPortfolio });
+    choose();
+
+    fireEvent.click(await screen.findByRole("button", { name: /import 2 holdings/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "View portfolio" }));
+
+    expect(onViewPortfolio).toHaveBeenCalledOnce();
   });
 
   it("reports a failed commit instead of claiming success", async () => {

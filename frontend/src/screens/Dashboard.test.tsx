@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -32,16 +32,17 @@ const card = (title: string) =>
 /** A Stat block, located by its label. */
 const stat = (label: string) => within(screen.getByText(label).parentElement!);
 
-function renderDashboard() {
+function renderDashboard(props: React.ComponentProps<typeof Dashboard> = {}) {
   // retry: false so the error-state assertion doesn't wait out three retries.
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
-  return render(<Dashboard />, { wrapper });
+  return render(<Dashboard {...props} />, { wrapper });
 }
 
 const SUMMARY: PortfolioSummary = {
+  data_status: "stored",
   net_worth: 142_000,
   total_invested: 130_000,
   num_accounts: 3,
@@ -116,6 +117,63 @@ beforeEach(() => {
 });
 
 describe("Dashboard", () => {
+  it("labels demo figures and offers both onboarding paths", async () => {
+    resolveAll();
+    const onConnect = vi.fn();
+    const onImport = vi.fn();
+    vi.mocked(api.summary).mockResolvedValue({ ...SUMMARY, data_status: "demo" });
+
+    renderDashboard({ onConnect, onImport });
+
+    expect(await screen.findByText("Example portfolio")).toBeInTheDocument();
+    expect(screen.getByText(/sample holdings/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Connect account" }));
+    fireEvent.click(screen.getByRole("button", { name: "Import CSV" }));
+    expect(onConnect).toHaveBeenCalledOnce();
+    expect(onImport).toHaveBeenCalledOnce();
+  });
+
+  it("offers onboarding without calling an empty portfolio demo data", async () => {
+    resolveAll();
+    vi.mocked(api.summary).mockResolvedValue({
+      ...SUMMARY,
+      data_status: "empty",
+      net_worth: 0,
+      total_invested: 0,
+      num_accounts: 0,
+      num_holdings: 0,
+      allocation_by_account: [],
+      allocation_by_asset_type: [],
+    });
+
+    renderDashboard();
+
+    expect(await screen.findByText("Add your portfolio")).toBeInTheDocument();
+    expect(screen.queryByText("Example portfolio")).not.toBeInTheDocument();
+  });
+
+  it("does not show onboarding claims for a stored portfolio", async () => {
+    resolveAll();
+    renderDashboard();
+
+    expect(await screen.findByText("Net Worth")).toBeInTheDocument();
+    expect(screen.queryByText("Example portfolio")).not.toBeInTheDocument();
+    expect(screen.queryByText("Add your portfolio")).not.toBeInTheDocument();
+  });
+
+  it("does not guess the source when an older backend omits data_status", async () => {
+    resolveAll();
+    const legacySummary: PortfolioSummary = { ...SUMMARY };
+    delete legacySummary.data_status;
+    vi.mocked(api.summary).mockResolvedValue(legacySummary);
+
+    renderDashboard();
+
+    expect(await screen.findByText("Portfolio source unknown")).toBeInTheDocument();
+    expect(screen.getByText(/did not identify whether these figures are examples or stored/i)).toBeInTheDocument();
+    expect(screen.queryByText("Example portfolio")).not.toBeInTheDocument();
+    expect(screen.queryByText("Add your portfolio")).not.toBeInTheDocument();
+  });
   it("shows a loading state before the queries settle", () => {
     // Never-resolving promises hold the component in its pending state.
     const pending = new Promise<never>(() => {});

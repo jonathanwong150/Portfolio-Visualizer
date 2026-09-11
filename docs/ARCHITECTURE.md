@@ -112,6 +112,13 @@ records loses empty-account semantics and restores the global-snapshot bug.
 Accounts are upserted by `plaid_account_id` for Plaid or by name for CSV imports;
 cross-source account reconciliation remains a separate concern.
 
+`GET /portfolio/summary` reports a source-agnostic `data_status`: `demo` when
+the configured broker is serving examples, `stored` after any snapshot exists
+(including a deliberately empty one), and `empty` when configured Plaid is
+waiting for its first sync. It does not guess whether stored rows came from CSV,
+Plaid, or both. The field is additive: a frontend talking to an older backend
+that omits it labels the source unknown rather than guessing demo or stored.
+
 ### CSV import (Phase 5)
 
 ```
@@ -224,7 +231,7 @@ the mobile app.
 | POST   | `/plaid/exchange`           | Exchange `public_token`, store Plaid Item |
 | POST   | `/plaid/sync`               | Sync holdings from broker (409 if unconfigured) |
 | GET    | `/accounts`                 | Synced accounts, valued at current prices |
-| GET    | `/portfolio/summary`        | Net worth, invested, allocation      |
+| GET    | `/portfolio/summary`        | Net worth, allocation, data status   |
 | GET    | `/portfolio/history`        | Net worth per snapshot, each at its own date's prices |
 | GET    | `/exposure/companies`       | Named + unresolved exposure (look-through) |
 | GET    | `/exposure/sectors`         | Sector breakdown                     |
@@ -243,13 +250,17 @@ the mobile app.
 
 ## Frontend Screens
 
-- **Dashboard** — net worth, total invested, allocation donut, top-10 named exposures plus unresolved ETF value.
-- **Exposure** — sector chart, searchable named-company list, and per-fund unresolved disclosure.
+- **Dashboard** — clearly labels example figures, offers connect/import onboarding,
+  then shows net worth, allocation, top named exposures, and unresolved ETF value.
+- **Exposure** — sector chart, searchable named-company list, and per-fund
+  unresolved disclosure.
 - **Overlap** — ETF overlap heatmap.
 - **Sectors / Factors** — toggleable bar/pie/treemap; factor tilt bars.
 - **Risk** — beta/vol/Sharpe/drawdown cards + correlation heatmap.
-- **Accounts** — connect via Plaid Link, sync holdings, list synced accounts with
-  live values; shows a banner and disables the actions when Plaid isn't configured.
+- **Accounts** — connect via Plaid Link and automatically sync after exchange.
+  Token or exchange failures restart Link because Plaid public tokens are
+  single-use; a confirmed exchange followed by sync failure retries only sync.
+  SDK load failures require a page reload. Manual resync and CSV remain available.
 
 ## Roadmap
 
@@ -273,6 +284,8 @@ the mobile app.
 
 ## Completed Work
 
+- 2026-09-09: Add truthful portfolio provenance, first-visit connect/import
+  onboarding, and a retryable Plaid Link → exchange → sync completion flow.
 - 2026-09-08: Preserve independently imported and synced accounts across portfolio
   views and history. Record empty account snapshots, retain compatibility with
   legacy holdings, report actual account counts, and reject unmatched account

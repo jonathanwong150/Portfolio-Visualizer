@@ -19,6 +19,14 @@ class SecurityType(str, Enum):
     cash = "cash"
 
 
+class PortfolioDataStatus(str, Enum):
+    """Whether summary figures come from examples or a stored portfolio."""
+
+    demo = "demo"
+    stored = "stored"
+    empty = "empty"
+
+
 class Security(BaseModel):
     """Metadata for a tradable security."""
 
@@ -79,6 +87,8 @@ class BreakdownSlice(BaseModel):
 
 
 class PortfolioSummary(BaseModel):
+    # Default keeps direct engine callers and older serialized fixtures compatible.
+    data_status: PortfolioDataStatus = PortfolioDataStatus.demo
     net_worth: float
     total_invested: float
     num_accounts: int

@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import datetime
 
 import pytest
 
 from app.config import Settings, get_settings
-from app.db.tables import PlaidItemRow
+from app.db.tables import AccountRow, AccountSnapshotRow, PlaidItemRow
 from app.models import AccountType
 
 
@@ -49,6 +50,66 @@ def _assert_portfolio(client, expected_values):
     coverage = client.get("/market-data/coverage").json()
     assert coverage["total_tickers"] == len(expected_values)
     assert set(coverage["missing"]) == set(expected_values)
+
+
+def test_summary_marks_a_fresh_db_portfolio_as_demo(client):
+    assert client.get("/portfolio/summary").json()["data_status"] == "demo"
+
+
+def test_summary_marks_saved_and_mixed_portfolios_as_stored(
+    client, monkeypatch, session_factory,
+):
+    _import(client, "CSV Brokerage", "NVDA", 2, 100)
+    _linked_account(monkeypatch, session_factory)
+    assert client.post("/plaid/sync").status_code == 200
+
+    assert client.get("/portfolio/summary").json()["data_status"] == "stored"
+
+
+def test_summary_keeps_a_cleared_portfolio_stored(client, session_factory):
+    with session_factory() as session:
+        account = AccountRow(name="Closed Account", type="brokerage")
+        session.add(account)
+        session.flush()
+        session.add(
+            AccountSnapshotRow(
+                account_id=account.id,
+                snapshot_at=datetime(2026, 9, 9, 12),
+            )
+        )
+        session.commit()
+
+    summary = client.get("/portfolio/summary").json()
+    assert summary["data_status"] == "stored"
+    assert summary["net_worth"] == 0
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [(True, "empty"), (False, "demo")],
+)
+def test_summary_distinguishes_configured_plaid_before_first_sync(
+    client, monkeypatch, configured, expected,
+):
+    monkeypatch.setattr(get_settings(), "broker_provider", "plaid")
+    monkeypatch.setattr(
+        Settings,
+        "plaid_configured",
+        property(lambda self: configured),
+    )
+
+    assert client.get("/portfolio/summary").json()["data_status"] == expected
+
+
+def test_configured_mock_provider_stays_demo_even_with_saved_holdings(
+    client, monkeypatch,
+):
+    _import(client, "CSV Brokerage", "NVDA", 2, 100)
+    monkeypatch.setattr(get_settings(), "broker_provider", "mock")
+
+    summary = client.get("/portfolio/summary").json()
+    assert summary["data_status"] == "demo"
+    assert summary["net_worth"] != 200
 
 
 def test_separate_imports_and_account_replacement_reconcile_every_view(client):
