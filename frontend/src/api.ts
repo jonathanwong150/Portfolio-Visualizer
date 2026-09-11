@@ -46,6 +46,8 @@ export interface BreakdownSlice {
 }
 
 export interface PortfolioSummary {
+  // Optional while older backend deployments remain compatible with this client.
+  data_status?: "demo" | "stored" | "empty";
   net_worth: number;
   total_invested: number;
   num_accounts: number;
@@ -62,6 +64,7 @@ export interface CompanyExposure {
   direct_value: number;
   via_etf_value: number;
   source_etfs: string[];
+  is_unresolved: boolean;
 }
 
 export interface RiskMetrics {

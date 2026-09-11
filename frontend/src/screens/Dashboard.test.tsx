@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -32,16 +32,17 @@ const card = (title: string) =>
 /** A Stat block, located by its label. */
 const stat = (label: string) => within(screen.getByText(label).parentElement!);
 
-function renderDashboard() {
+function renderDashboard(props: React.ComponentProps<typeof Dashboard> = {}) {
   // retry: false so the error-state assertion doesn't wait out three retries.
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
-  return render(<Dashboard />, { wrapper });
+  return render(<Dashboard {...props} />, { wrapper });
 }
 
 const SUMMARY: PortfolioSummary = {
+  data_status: "stored",
   net_worth: 142_000,
   total_invested: 130_000,
   num_accounts: 3,
@@ -62,6 +63,7 @@ const COMPANIES: CompanyExposure[] = [
     direct_value: 5_000,
     via_etf_value: 16_300,
     source_etfs: ["VOO", "QQQ"],
+    is_unresolved: false,
   },
   {
     ticker: "AAPL",
@@ -71,6 +73,17 @@ const COMPANIES: CompanyExposure[] = [
     direct_value: 0,
     via_etf_value: 14_200,
     source_etfs: ["VOO"],
+    is_unresolved: false,
+  },
+  {
+    ticker: "UNRESOLVED:VOO",
+    name: "Unresolved holdings in VOO",
+    value: 71_000,
+    weight: 0.5,
+    direct_value: 0,
+    via_etf_value: 71_000,
+    source_etfs: ["VOO"],
+    is_unresolved: true,
   },
 ];
 
@@ -104,6 +117,63 @@ beforeEach(() => {
 });
 
 describe("Dashboard", () => {
+  it("labels demo figures and offers both onboarding paths", async () => {
+    resolveAll();
+    const onConnect = vi.fn();
+    const onImport = vi.fn();
+    vi.mocked(api.summary).mockResolvedValue({ ...SUMMARY, data_status: "demo" });
+
+    renderDashboard({ onConnect, onImport });
+
+    expect(await screen.findByText("Example portfolio")).toBeInTheDocument();
+    expect(screen.getByText(/sample holdings/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Connect account" }));
+    fireEvent.click(screen.getByRole("button", { name: "Import CSV" }));
+    expect(onConnect).toHaveBeenCalledOnce();
+    expect(onImport).toHaveBeenCalledOnce();
+  });
+
+  it("offers onboarding without calling an empty portfolio demo data", async () => {
+    resolveAll();
+    vi.mocked(api.summary).mockResolvedValue({
+      ...SUMMARY,
+      data_status: "empty",
+      net_worth: 0,
+      total_invested: 0,
+      num_accounts: 0,
+      num_holdings: 0,
+      allocation_by_account: [],
+      allocation_by_asset_type: [],
+    });
+
+    renderDashboard();
+
+    expect(await screen.findByText("Add your portfolio")).toBeInTheDocument();
+    expect(screen.queryByText("Example portfolio")).not.toBeInTheDocument();
+  });
+
+  it("does not show onboarding claims for a stored portfolio", async () => {
+    resolveAll();
+    renderDashboard();
+
+    expect(await screen.findByText("Net Worth")).toBeInTheDocument();
+    expect(screen.queryByText("Example portfolio")).not.toBeInTheDocument();
+    expect(screen.queryByText("Add your portfolio")).not.toBeInTheDocument();
+  });
+
+  it("does not guess the source when an older backend omits data_status", async () => {
+    resolveAll();
+    const legacySummary: PortfolioSummary = { ...SUMMARY };
+    delete legacySummary.data_status;
+    vi.mocked(api.summary).mockResolvedValue(legacySummary);
+
+    renderDashboard();
+
+    expect(await screen.findByText("Portfolio source unknown")).toBeInTheDocument();
+    expect(screen.getByText(/did not identify whether these figures are examples or stored/i)).toBeInTheDocument();
+    expect(screen.queryByText("Example portfolio")).not.toBeInTheDocument();
+    expect(screen.queryByText("Add your portfolio")).not.toBeInTheDocument();
+  });
   it("shows a loading state before the queries settle", () => {
     // Never-resolving promises hold the component in its pending state.
     const pending = new Promise<never>(() => {});
@@ -124,6 +194,17 @@ describe("Dashboard", () => {
     renderDashboard();
 
     expect(await screen.findByText("Failed to load summary.")).toBeInTheDocument();
+  });
+
+  it("does not present missing exposure data as an empty ranking", async () => {
+    vi.mocked(api.summary).mockResolvedValue(SUMMARY);
+    vi.mocked(api.companies).mockRejectedValue(new Error("/exposure/companies -> 500"));
+    vi.mocked(api.risk).mockResolvedValue(RISK);
+
+    renderDashboard();
+
+    expect(await screen.findByText("Failed to load exposure.")).toBeInTheDocument();
+    expect(screen.queryByText("Top Named Company Exposures (look-through)")).not.toBeInTheDocument();
   });
 
   it("renders net worth and unrealized gain formatted as currency", async () => {
@@ -157,6 +238,9 @@ describe("Dashboard", () => {
     expect(screen.getByText("15.0%")).toBeInTheDocument();
     expect(screen.getByText("AAPL")).toBeInTheDocument();
     expect(screen.getByText("10.0%")).toBeInTheDocument();
+    expect(screen.queryByText("UNRESOLVED:VOO")).not.toBeInTheDocument();
+    expect(screen.getByText("50.0% unresolved")).toBeInTheDocument();
+    expect(screen.getByText("$71,000 not attributed to named companies")).toBeInTheDocument();
   });
 
   it("renders an em dash for beta when the risk query has no data", async () => {
@@ -226,9 +310,21 @@ describe("Dashboard", () => {
 
     renderDashboard();
 
-    expect(await screen.findByText("Top True Exposures (look-through)")).toBeInTheDocument();
+    expect(await screen.findByText("Top Named Company Exposures (look-through)")).toBeInTheDocument();
+    expect(screen.getByText("No named company exposure yet.")).toBeInTheDocument();
     // Net worth and total invested both read $0 on an empty portfolio.
     expect(screen.getAllByText("$0")).toHaveLength(2);
     expect(screen.queryByText("NVDA")).not.toBeInTheDocument();
+  });
+
+  it("explains when the portfolio is entirely unresolved", async () => {
+    vi.mocked(api.summary).mockResolvedValue(SUMMARY);
+    vi.mocked(api.companies).mockResolvedValue([COMPANIES[2]]);
+    vi.mocked(api.risk).mockResolvedValue(RISK);
+
+    renderDashboard();
+
+    expect(await screen.findByText("No named company exposure yet.")).toBeInTheDocument();
+    expect(screen.getByText("50.0% unresolved")).toBeInTheDocument();
   });
 });

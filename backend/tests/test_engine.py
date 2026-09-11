@@ -4,8 +4,8 @@ from __future__ import annotations
 import pytest
 
 from app.analytics.engine import PortfolioAnalytics
-from app.models import AccountType, Holding
-from app.providers.base import BrokerAdapter
+from app.models import AccountType, ETFConstituent, Holding, Security, SecurityType
+from app.providers.base import BrokerAdapter, ETFHoldingsProvider, MarketDataProvider
 from app.providers.seed import SeedETFHoldingsProvider, SeedMarketDataProvider
 
 
@@ -22,6 +22,62 @@ def _engine(holdings: list[Holding]) -> PortfolioAnalytics:
         broker=_StaticBroker(holdings),
         market=SeedMarketDataProvider(),
         etf=SeedETFHoldingsProvider(),
+    )
+
+
+class _FixedMarket(MarketDataProvider):
+    def __init__(self, prices: dict[str, float]) -> None:
+        self._prices = prices
+
+    def get_security(self, ticker: str) -> Security | None:
+        if ticker not in self._prices:
+            return None
+        unresolved = ticker.startswith("UNRESOLVED:")
+        return Security(
+            ticker=ticker,
+            name=ticker,
+            type=SecurityType.stock,
+            sector="Technology",
+            geography="US",
+            # Synthetic unresolved metadata points opposite the named holding,
+            # so its accidental inclusion would visibly change every score.
+            pe=50 if unresolved else 20,
+            pb=15 if unresolved else 4,
+            roe=0 if unresolved else 0.2,
+            momentum=0.5 if unresolved else 1.1,
+            beta=0 if unresolved else 1.0,
+        )
+
+    def get_price_history(self, ticker: str) -> list[float]:
+        return [self._prices.get(ticker, 0.0)]
+
+
+class _FixedETF(ETFHoldingsProvider):
+    def __init__(self, constituents: dict[str, list[tuple[str, float]]]) -> None:
+        self._constituents = constituents
+
+    def get_constituents(self, etf_ticker: str) -> list[ETFConstituent]:
+        return [
+            ETFConstituent(ticker=ticker, weight=weight)
+            for ticker, weight in self._constituents.get(etf_ticker, [])
+        ]
+
+    def is_etf(self, ticker: str) -> bool:
+        return ticker in self._constituents
+
+
+def _fixed_engine(
+    holdings: list[Holding], constituents: dict[str, list[tuple[str, float]]]
+) -> PortfolioAnalytics:
+    tickers = {h.ticker for h in holdings}
+    tickers.update(ticker for rows in constituents.values() for ticker, _ in rows)
+    # Deliberately provide metadata for the reserved namespace so the factor
+    # test proves is_unresolved drives exclusion rather than missing metadata.
+    tickers.update(f"UNRESOLVED:{ticker}" for ticker in constituents)
+    return PortfolioAnalytics(
+        broker=_StaticBroker(holdings),
+        market=_FixedMarket({ticker: 100.0 for ticker in tickers}),
+        etf=_FixedETF(constituents),
     )
 
 
@@ -138,29 +194,154 @@ def test_correlation_matrix_shape_and_diagonal():
             assert abs(cm.matrix[i][j] - cm.matrix[j][i]) < 1e-6
 
 
-def test_uncovered_etf_weight_is_redistributed_not_parked_under_the_etf():
-    """Pins the approximation in ``company_exposure``.
-
-    The seed covers only part of each ETF, and the unmapped tail is spread
-    proportionally across the mapped constituents. That scales every
-    single-name exposure by ``1 / covered_weight`` — with SPY at 38.9% seed
-    coverage, a 6.5% NVDA weight presents as ~16.7%. Real constituent data
-    makes this branch a no-op; until then the headline number is inflated, so
-    the behaviour is pinned here rather than left implicit.
-    """
-    eng = _engine([Holding(ticker="SPY", shares=10, account_type=AccountType.brokerage)])
-    constituents = SeedETFHoldingsProvider().get_constituents("SPY")
-    covered = sum(c.weight for c in constituents)
-    nvda_weight = next(c.weight for c in constituents if c.ticker == "NVDA")
-
-    exposure = {e.ticker: e for e in eng.company_exposure()}["NVDA"]
-
-    assert covered < 1.0  # the premise: seed coverage is partial
-    assert exposure.via_etf_value == pytest.approx(
-        eng.total_value * nvda_weight / covered
+def test_partial_constituent_weights_are_verbatim_with_an_unresolved_remainder():
+    eng = _fixed_engine(
+        [Holding(ticker="TOY", shares=10, account_type=AccountType.brokerage)],
+        {"TOY": [("AAPL", 0.1), ("MSFT", 0.2)]},
     )
-    # The ETF itself must not appear as a residual bucket while anything mapped.
-    assert "SPY" not in {e.ticker for e in eng.company_exposure()}
+
+    exposure = {e.ticker: e for e in eng.company_exposure()}
+
+    assert exposure["AAPL"].value == pytest.approx(100)
+    assert exposure["MSFT"].value == pytest.approx(200)
+    unresolved = exposure["UNRESOLVED:TOY"]
+    assert unresolved.value == pytest.approx(700)
+    assert unresolved.weight == pytest.approx(0.7)
+    assert unresolved.name == "Unresolved holdings in TOY"
+    assert unresolved.is_unresolved is True
+    assert unresolved.source_etfs == ["TOY"]
+    assert exposure["AAPL"].is_unresolved is False
+
+
+def test_direct_and_multiple_etf_exposures_net_without_merging_unresolved_funds():
+    eng = _fixed_engine(
+        [
+            Holding(ticker="AAPL", shares=1, account_type=AccountType.brokerage),
+            Holding(ticker="FUND1", shares=10, account_type=AccountType.brokerage),
+            Holding(ticker="FUND2", shares=5, account_type=AccountType.roth),
+        ],
+        {"FUND1": [("AAPL", 0.1)], "FUND2": [("AAPL", 0.5)]},
+    )
+
+    exposure = {e.ticker: e for e in eng.company_exposure()}
+
+    assert exposure["AAPL"].value == pytest.approx(450)
+    assert exposure["AAPL"].direct_value == pytest.approx(100)
+    assert exposure["AAPL"].via_etf_value == pytest.approx(350)
+    assert exposure["AAPL"].source_etfs == ["FUND1", "FUND2"]
+    assert exposure["UNRESOLVED:FUND1"].value == pytest.approx(900)
+    assert exposure["UNRESOLVED:FUND2"].value == pytest.approx(250)
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_reserved_ticker_text_does_not_merge_real_and_unresolved_exposure(reverse):
+    holdings = [
+        Holding(ticker="TOY", shares=10, account_type=AccountType.brokerage),
+        Holding(
+            ticker="UNRESOLVED:TOY",
+            shares=2,
+            account_type=AccountType.brokerage,
+        ),
+    ]
+    if reverse:
+        holdings.reverse()
+    eng = _fixed_engine(
+        holdings,
+        {"TOY": [("UNRESOLVED:TOY", 0.2)]},
+    )
+
+    collisions = [
+        exposure
+        for exposure in eng.company_exposure()
+        if exposure.ticker == "UNRESOLVED:TOY"
+    ]
+
+    assert len(collisions) == 2
+    real = next(exposure for exposure in collisions if not exposure.is_unresolved)
+    unresolved = next(exposure for exposure in collisions if exposure.is_unresolved)
+    assert real.direct_value == pytest.approx(200)
+    assert real.via_etf_value == pytest.approx(200)
+    assert unresolved.value == pytest.approx(800)
+    assert sum(exposure.value for exposure in collisions) == pytest.approx(eng.total_value)
+
+
+def test_etf_with_no_constituents_is_entirely_unresolved():
+    eng = _fixed_engine(
+        [Holding(ticker="EMPTY", shares=10, account_type=AccountType.brokerage)],
+        {"EMPTY": []},
+    )
+
+    assert eng.company_exposure()[0].ticker == "UNRESOLVED:EMPTY"
+    assert eng.company_exposure()[0].value == pytest.approx(1000)
+
+
+def test_fully_covered_etf_has_no_unresolved_row():
+    eng = _fixed_engine(
+        [Holding(ticker="FULL", shares=10, account_type=AccountType.brokerage)],
+        {"FULL": [("AAPL", 0.4), ("MSFT", 0.6)]},
+    )
+
+    exposure = eng.company_exposure()
+
+    assert {e.ticker for e in exposure} == {"AAPL", "MSFT"}
+    assert sum(e.value for e in exposure) == pytest.approx(eng.total_value)
+
+
+def test_stable_sum_recognizes_exact_full_coverage():
+    eng = _fixed_engine(
+        [Holding(ticker="FULL", shares=10, account_type=AccountType.brokerage)],
+        {"FULL": [(f"STOCK{i}", 0.1) for i in range(10)]},
+    )
+
+    exposure = eng.company_exposure()
+
+    assert not any(e.is_unresolved for e in exposure)
+    assert sum(e.value for e in exposure) == pytest.approx(eng.total_value)
+
+
+@pytest.mark.parametrize(
+    "constituents",
+    [
+        [("AAPL", -0.1), ("MSFT", 0.2)],
+        [("AAPL", float("nan"))],
+        [("AAPL", float("inf"))],
+        [("AAPL", 1.000_000_000_1)],
+        [("AAPL", 0.6), ("MSFT", 0.400_000_000_1)],
+        [("AAPL", 0.6), ("MSFT", 0.400_001)],
+    ],
+)
+def test_invalid_constituent_lists_make_the_entire_fund_unresolved(constituents):
+    eng = _fixed_engine(
+        [Holding(ticker="BAD", shares=10, account_type=AccountType.brokerage)],
+        {"BAD": constituents},
+    )
+
+    exposure = eng.company_exposure()
+
+    assert len(exposure) == 1
+    assert exposure[0].ticker == "UNRESOLVED:BAD"
+    assert exposure[0].value == pytest.approx(eng.total_value)
+
+
+def test_unresolved_exposure_reconciles_in_sector_unknown_and_is_not_factor_scored():
+    eng = _fixed_engine(
+        [Holding(ticker="TOY", shares=10, account_type=AccountType.brokerage)],
+        {"TOY": [("AAPL", 0.3)]},
+    )
+
+    sectors = {slice_.label: slice_ for slice_ in eng.sector_breakdown()}
+
+    assert sectors["Technology"].value == pytest.approx(300)
+    assert sectors["Unknown"].value == pytest.approx(700)
+    assert sum(slice_.value for slice_ in sectors.values()) == pytest.approx(eng.total_value)
+    geographies = {slice_.label: slice_ for slice_ in eng.geography_breakdown()}
+    assert geographies["US"].value == pytest.approx(300)
+    assert geographies["Unknown"].value == pytest.approx(700)
+    tilts = {tilt.factor: tilt for tilt in eng.factor_tilts()}
+    assert tilts["style"].score == pytest.approx(-0.15)
+    assert tilts["style"].low_weight == pytest.approx(1)
+    assert tilts["momentum"].score == pytest.approx(0.2)
+    assert tilts["momentum"].high_weight == pytest.approx(1)
 
 
 def test_lookthrough_totals_still_reconcile_to_net_worth():

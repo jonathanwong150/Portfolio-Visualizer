@@ -30,6 +30,7 @@ EXPOSURE_HEADER = [
     "direct_value",
     "via_etf_value",
     "source_etfs",
+    "is_unresolved",
 ]
 
 
@@ -63,7 +64,7 @@ def holdings_csv(holdings: list[Holding], market: MarketDataProvider) -> str:
 
 
 def exposure_csv(exposures: list[CompanyExposure]) -> str:
-    """True per-company exposure, post look-through, in the order given."""
+    """Named and unresolved exposure, post look-through, in the order given."""
     rows: list[list[object]] = [
         [
             e.ticker,
@@ -74,6 +75,7 @@ def exposure_csv(exposures: list[CompanyExposure]) -> str:
             e.via_etf_value,
             # Space-separated so the field survives a spreadsheet import intact.
             " ".join(e.source_etfs),
+            e.is_unresolved,
         ]
         for e in exposures
     ]

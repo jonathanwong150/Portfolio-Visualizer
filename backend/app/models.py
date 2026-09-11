@@ -19,6 +19,14 @@ class SecurityType(str, Enum):
     cash = "cash"
 
 
+class PortfolioDataStatus(str, Enum):
+    """Whether summary figures come from examples or a stored portfolio."""
+
+    demo = "demo"
+    stored = "stored"
+    empty = "empty"
+
+
 class Security(BaseModel):
     """Metadata for a tradable security."""
 
@@ -68,6 +76,8 @@ class CompanyExposure(BaseModel):
     direct_value: float   # held directly
     via_etf_value: float  # held through ETFs
     source_etfs: list[str] = Field(default_factory=list)
+    # True for the portion of an ETF that its constituent source did not resolve.
+    is_unresolved: bool = False
 
 
 class BreakdownSlice(BaseModel):
@@ -77,6 +87,8 @@ class BreakdownSlice(BaseModel):
 
 
 class PortfolioSummary(BaseModel):
+    # Default keeps direct engine callers and older serialized fixtures compatible.
+    data_status: PortfolioDataStatus = PortfolioDataStatus.demo
     net_worth: float
     total_invested: float
     num_accounts: int

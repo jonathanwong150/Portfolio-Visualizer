@@ -42,13 +42,24 @@ curated **seed dataset** (`backend/app/data/etf_seed.json`) of popular ETFs with
 their top holdings + weights. This keeps the app fully functional while making
 the one component most likely to need paid data a drop-in swap.
 
+Partial data remains partial: reported constituent weights are used verbatim,
+and each fund's uncovered value is returned as an explicit
+`UNRESOLVED:<fund>` exposure. It remains in portfolio, sector/geography, and
+export totals, but is excluded from named-company rankings and factor scores.
+An ETF with no constituents is 100% unresolved. A list with negative,
+non-finite, or individually over-100% weights, or any stably summed total above
+100%, is rejected as a whole so bad source data cannot create value. The API's
+logical exposure identity is `(is_unresolved, ticker)`: the display namespace
+may match a real ticker without merging the two rows.
+
 ## Analytics Engine
 
 Located in `backend/app/analytics/`.
 
 1. **Look-through resolver** — expands each ETF position into
-   `(underlying_ticker, weight × position_value)`, then nets duplicates across
-   ETFs and direct holdings → **true per-company exposure**.
+   `(underlying_ticker, reported_weight × position_value)`, then nets duplicates
+   across ETFs and direct holdings. Uncovered value is explicitly unresolved,
+   preserving both honest **named-company exposure** and total reconciliation.
 2. **Overlap analysis** — pairwise shared-weight between ETFs.
 3. **Breakdowns** — sector / geography / market-cap / asset class (post look-through).
 4. **Factor analysis** — growth vs value, size, momentum, quality (rule-based
@@ -100,6 +111,13 @@ no existing tables or rows are replaced. Reverting to code that ignores these
 records loses empty-account semantics and restores the global-snapshot bug.
 Accounts are upserted by `plaid_account_id` for Plaid or by name for CSV imports;
 cross-source account reconciliation remains a separate concern.
+
+`GET /portfolio/summary` reports a source-agnostic `data_status`: `demo` when
+the configured broker is serving examples, `stored` after any snapshot exists
+(including a deliberately empty one), and `empty` when configured Plaid is
+waiting for its first sync. It does not guess whether stored rows came from CSV,
+Plaid, or both. The field is additive: a frontend talking to an older backend
+that omits it labels the source unknown rather than guessing demo or stored.
 
 ### CSV import (Phase 5)
 
@@ -154,8 +172,9 @@ tier allows **25 requests/day** against a ~20-ticker portfolio wanting ~40, so
 fundamentals — and a truncated run leaves the most useful partial state.
 
 `GET /market-data/coverage` reports how much of the portfolio has real data, and
-per-ETF constituent depth: a look-through percentage is only as trustworthy as
-the fraction of the fund its constituent list covers.
+per-ETF constituent depth. The look-through response independently carries the
+same uncertainty as unresolved value, so consumers cannot mistake a partial
+constituent list for full named-company coverage.
 
 ### Net-worth history (Phase 4)
 
@@ -212,9 +231,9 @@ the mobile app.
 | POST   | `/plaid/exchange`           | Exchange `public_token`, store Plaid Item |
 | POST   | `/plaid/sync`               | Sync holdings from broker (409 if unconfigured) |
 | GET    | `/accounts`                 | Synced accounts, valued at current prices |
-| GET    | `/portfolio/summary`        | Net worth, invested, allocation      |
+| GET    | `/portfolio/summary`        | Net worth, allocation, data status   |
 | GET    | `/portfolio/history`        | Net worth per snapshot, each at its own date's prices |
-| GET    | `/exposure/companies`       | True company exposure (look-through) |
+| GET    | `/exposure/companies`       | Named + unresolved exposure (look-through) |
 | GET    | `/exposure/sectors`         | Sector breakdown                     |
 | GET    | `/exposure/factors`         | Factor tilts                         |
 | GET    | `/exposure/geography`       | Geographic breakdown                 |
@@ -231,13 +250,17 @@ the mobile app.
 
 ## Frontend Screens
 
-- **Dashboard** — net worth, total invested, allocation donut, top-10 true exposures.
-- **Exposure** — treemap + searchable list ("you own X% NVIDIA across N funds").
+- **Dashboard** — clearly labels example figures, offers connect/import onboarding,
+  then shows net worth, allocation, top named exposures, and unresolved ETF value.
+- **Exposure** — sector chart, searchable named-company list, and per-fund
+  unresolved disclosure.
 - **Overlap** — ETF overlap heatmap.
 - **Sectors / Factors** — toggleable bar/pie/treemap; factor tilt bars.
 - **Risk** — beta/vol/Sharpe/drawdown cards + correlation heatmap.
-- **Accounts** — connect via Plaid Link, sync holdings, list synced accounts with
-  live values; shows a banner and disables the actions when Plaid isn't configured.
+- **Accounts** — connect via Plaid Link and automatically sync after exchange.
+  Token or exchange failures restart Link because Plaid public tokens are
+  single-use; a confirmed exchange followed by sync failure retries only sync.
+  SDK load failures require a page reload. Manual resync and CSV remain available.
 
 ## Roadmap
 
@@ -261,6 +284,8 @@ the mobile app.
 
 ## Completed Work
 
+- 2026-09-09: Add truthful portfolio provenance, first-visit connect/import
+  onboarding, and a retryable Plaid Link → exchange → sync completion flow.
 - 2026-09-08: Preserve independently imported and synced accounts across portfolio
   views and history. Record empty account snapshots, retain compatibility with
   legacy holdings, report actual account counts, and reject unmatched account

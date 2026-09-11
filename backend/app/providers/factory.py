@@ -8,6 +8,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.models import PortfolioDataStatus
 from app.providers.base import BrokerAdapter, ETFHoldingsProvider, MarketDataProvider
 from app.providers.mock_broker import MockBroker
 from app.providers.seed import SeedETFHoldingsProvider, SeedMarketDataProvider
@@ -32,6 +33,21 @@ def get_broker(session: Session | None = None) -> BrokerAdapter:
         # Mock data keeps the app usable until the first successful Plaid sync.
         return PlaidBroker(fallback=MockBroker(), session=session)
     raise ValueError(f"Unknown broker provider: {provider!r}")
+
+
+def get_portfolio_data_status(session: Session) -> PortfolioDataStatus:
+    """Describe the holdings source without guessing how stored rows arrived."""
+    settings = get_settings()
+    if settings.broker_provider == "mock":
+        return PortfolioDataStatus.demo
+
+    from app.providers.db_broker import latest_snapshot_at
+
+    if latest_snapshot_at(session) is not None:
+        return PortfolioDataStatus.stored
+    if settings.broker_provider == "plaid" and settings.plaid_configured:
+        return PortfolioDataStatus.empty
+    return PortfolioDataStatus.demo
 
 
 def get_market_data(session: Session | None = None) -> MarketDataProvider:
